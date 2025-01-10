@@ -6,7 +6,8 @@ excluded_from_file_tree = [
   "node_modules",
   ".project-context.toml",
   "build",
-  "dist"
+  "dist",
+  ".DS_Store",
 ]
 
 # Files/directories to completely ignore
@@ -20,19 +21,19 @@ ignored_paths = [
   "build",
   "dist",
   "package-lock.json",
+  ".demo-recorder.toml",
+  ".DS_Store",
+  "project-context.xml",
+  "recordings",
 ]
 
 # Paths to include in XML content
 included_paths = [
-  # ".DS_Store",
-  # ".demo-recorder.toml",
   "README.md",
   "example-config.toml",
   "package.json",
-  # "project-context.xml",
-  # "recordings/content-flow.mp4",
-  # "recordings/login-flow-with-pauses.mp4",
   "src/actions/InputActions.ts",
+  # "src/actions/MouseActions copy.ts",
   "src/actions/MouseActions.ts",
   "src/actions/SelectActions.ts",
   "src/config.ts",
@@ -41,6 +42,6 @@ included_paths = [
   "src/recorder/types.ts",
   "src/utils/browser.ts",
   "src/utils/delay.ts",
-  # "src/utils/mouse-helper.ts",
+  "src/utils/mouse-helper.ts",
   "tsconfig.json"
 ]

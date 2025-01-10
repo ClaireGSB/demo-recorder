@@ -159,8 +159,10 @@ class DemoRecorder {
 
     await checkMouseHelper(this.page);
 
-    this.recorder = new CustomScreenRecorder(this.page);
+
     this.mouseActions = new MouseActions(this.page);
+
+    this.recorder = new CustomScreenRecorder(this.page);
     this.inputActions = new InputActions(this.page);
     this.selectActions = new SelectActions(this.page);
   }
@@ -226,23 +228,33 @@ class DemoRecorder {
 
       switch (step.type) {
         case 'navigate':
+          const currentPosition = this.mouseActions.getPosition();
           console.log(`Navigating to: ${this.config.project.baseUrl}${step.path}`);
+
+          // Log position before navigation
+          console.log('Position before navigation:', currentPosition);
+
           await this.page.goto(`${this.config.project.baseUrl}${step.path}`, {
             waitUntil: ['networkidle0', 'load']
           });
-          await delay(1000); // Give time for mouse helper to initialize
+          // Restore mouse position after navigation
+          await delay(1000); // Give time for page to stabilize
+          await this.mouseActions.restorePosition();
+          // Log position after restore
+          const newPosition = this.mouseActions.getPosition();
+          console.log('Position after navigation restore:', newPosition);
           break;
 
-          case 'input':
-            console.log(`Typing into: ${step.selector}`);
-            const typeConfig = {
-              ...this.config.recording.defaultTypeConfig,
-              ...step.typeConfig
-            };
-            await this.inputActions.typeText(step.selector!, step.value!, {
-              isTextarea: step.selector?.includes('textarea'),
-              delay: typeConfig.slowType ? (typeConfig.typeDelay || 150) : 0
-            });
+        case 'input':
+          console.log(`Typing into: ${step.selector}`);
+          const typeConfig = {
+            ...this.config.recording.defaultTypeConfig,
+            ...step.typeConfig
+          };
+          await this.inputActions.typeText(step.selector!, step.value!, {
+            isTextarea: step.selector?.includes('textarea'),
+            delay: typeConfig.slowType ? (typeConfig.typeDelay || 150) : 0
+          });
           break;
 
         case 'select':
@@ -301,12 +313,12 @@ class DemoRecorder {
     try {
       await this.initialize();
       if (!this.page || !this.recorder) throw new Error('Failed to initialize');
-  
+
       // Don't auto-start recording - wait for a startRecording step
       for (const step of this.config.steps) {
         await this.executeStep(step);
       }
-  
+
       // Only stop if we're still recording at the end
       if (this.recorder.getStatus().isRecording) {
         console.log('Stopping recording...');
