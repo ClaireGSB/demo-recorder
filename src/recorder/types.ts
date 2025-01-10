@@ -34,12 +34,18 @@ export type StepType =
   | 'select' 
   | 'click' 
   | 'wait'
+  | 'scrollDown'
   | 'startRecording'
   | 'stopRecording'
   | 'pauseRecording'
   | 'resumeRecording';
 
-
+  export interface ScrollStep extends Step {
+    type: 'scrollDown';
+    pixels: number;
+    duration?: number;  // milliseconds
+    moveMouse?: boolean;
+  }
 export interface ProjectConfig {
   name: string;
   baseUrl: string;

@@ -241,7 +241,7 @@ class DemoRecorder {
             };
             await this.inputActions.typeText(step.selector!, step.value!, {
               isTextarea: step.selector?.includes('textarea'),
-              delay: typeConfig.slowType ? (typeConfig.typeDelay || 150) : 50
+              delay: typeConfig.slowType ? (typeConfig.typeDelay || 150) : 0
             });
           break;
 
@@ -258,6 +258,14 @@ class DemoRecorder {
         case 'wait':
           console.log(`Waiting: ${step.duration}ms`);
           await delay(step.duration || 1000);
+          break;
+
+        case 'scrollDown':
+          console.log(`Scrolling: ${step.pixels}px`);
+          await this.mouseActions?.smoothScroll(
+            step.pixels,
+            step.duration || 1000
+          );
           break;
 
         case 'startRecording':

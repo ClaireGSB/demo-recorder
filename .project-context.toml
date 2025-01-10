@@ -24,10 +24,14 @@ ignored_paths = [
 
 # Paths to include in XML content
 included_paths = [
+  # ".DS_Store",
+  # ".demo-recorder.toml",
   "README.md",
   "example-config.toml",
   "package.json",
   # "project-context.xml",
+  # "recordings/content-flow.mp4",
+  # "recordings/login-flow-with-pauses.mp4",
   "src/actions/InputActions.ts",
   "src/actions/MouseActions.ts",
   "src/actions/SelectActions.ts",
@@ -37,5 +41,6 @@ included_paths = [
   "src/recorder/types.ts",
   "src/utils/browser.ts",
   "src/utils/delay.ts",
+  # "src/utils/mouse-helper.ts",
   "tsconfig.json"
 ]

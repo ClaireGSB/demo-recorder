@@ -12,13 +12,13 @@ export class MouseActions {
   private currentX: number = 0;
   private currentY: number = 0;
 
-  constructor(private page: Page) {}
+  constructor(private page: Page) { }
 
   async moveWithDelay(selector: string, options: MouseMoveOptions = {}) {
-    const { 
-      delayMs = 500, 
+    const {
+      delayMs = 500,
       shouldClick = true,
-      steps = 25 
+      steps = 25
     } = options;
 
     const element = await this.page.$(selector);
@@ -64,5 +64,35 @@ export class MouseActions {
 
   getPosition() {
     return { x: this.currentX, y: this.currentY };
+  }
+
+  async smoothScroll(pixels: number, duration: number = 1000, moveMouse: boolean = false) {
+    const steps = Math.floor(duration / 16);  // ~60fps
+    const pixelsPerStep = pixels / steps;
+    const stepDuration = duration / steps;
+
+    // Get current viewport height
+    const viewportHeight = await this.page.evaluate(() => window.innerHeight);
+
+    for (let i = 0; i < steps; i++) {
+      // Scroll the page
+      await this.page.evaluate((y) => {
+        window.scrollBy(0, y);
+      }, pixelsPerStep);
+
+      // Move mouse along with scroll if it's in the viewport
+      if (moveMouse) {
+        const currentPos = this.getPosition();
+        if (currentPos.y < viewportHeight) {
+          await this.page.mouse.move(
+            currentPos.x,
+            currentPos.y + pixelsPerStep
+          );
+          this.currentY += pixelsPerStep;
+        }
+      }
+
+      await delay(stepDuration);
+    }
   }
 }

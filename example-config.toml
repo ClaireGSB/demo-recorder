@@ -119,6 +119,11 @@ typeConfig = { slowType = true, typeDelay = 200 }
 type = "wait"
 duration = 1000
 
+[[steps]]
+type = "scrollDown"
+pixels = 500  # scroll down 500 pixels
+duration = 1000  # take 1 second to complete the scroll
+
 # Fill additional instructions
 [[steps]]
 type = "input"
@@ -128,7 +133,7 @@ value = "Include specific examples of AI tools in development workflows."
 
 [[steps]]
 type = "wait"
-duration = 6000
+duration = 2000
 
 [[steps]]
 type = "stopRecording" 
