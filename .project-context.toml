@@ -29,19 +29,19 @@ ignored_paths = [
 
 # Paths to include in XML content
 included_paths = [
-  "README.md",
-  "example-config.toml",
+  # "README.md",
+  # "example-config.toml",
   "package.json",
   "src/actions/InputActions.ts",
   # "src/actions/MouseActions copy.ts",
   "src/actions/MouseActions.ts",
-  "src/actions/SelectActions.ts",
+  # "src/actions/SelectActions.ts",
   "src/config.ts",
   "src/index.ts",
   "src/recorder/CustomScreenRecorder.ts",
   "src/recorder/types.ts",
-  "src/utils/browser.ts",
-  "src/utils/delay.ts",
+  # "src/utils/browser.ts",
+  # "src/utils/delay.ts",
   "src/utils/mouse-helper.ts",
-  "tsconfig.json"
+  # "tsconfig.json"
 ]
