@@ -20,11 +20,16 @@
 </projectInfo>
   <fileTree>
     <![CDATA[
+├── .DS_Store
+├── .demo-recorder.toml
 ├── README.md
 ├── example-config.toml
 ├── package-lock.json
 ├── package.json
 ├── project-context.xml
+├── recordings/
+│   ├── content-flow.mp4
+│   └── login-flow-with-pauses.mp4
 ├── src/
 │   ├── actions/
 │   │   ├── InputActions.ts
@@ -37,7 +42,8 @@
 │   │   └── types.ts
 │   └── utils/
 │       ├── browser.ts
-│       └── delay.ts
+│       ├── delay.ts
+│       └── mouse-helper.ts
 ├── tsconfig.json
 └── yarn.lock
 
@@ -47,7 +53,202 @@
     
           <file>
             <path>README.md</path>
-            <content><![CDATA[]]></content>
+            <content><![CDATA[# Demo Recorder
+
+A tool for automatically recording web application demos using Puppeteer. Creates smooth, professional-looking demo videos with visible mouse movements and natural interactions.
+
+## Features
+
+- Record automated demos of web applications
+- Smooth mouse movements with visual cursor indicator
+- Support for various interactions:
+  - Clicking elements
+  - Typing in input fields and textareas
+  - Selecting from dropdowns
+  - Navigation
+  - Timed waits
+- Configurable recording settings
+- TOML-based configuration
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone [your-repo-url]
+cd demo-recorder
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Add the tool to your shell configuration (`~/.bashrc` or `~/.zshrc`):
+```bash
+alias demo-record='function _demo_record() { npm run --prefix /absolute/path/to/demo-recorder start "$(pwd)"; }; _demo_record'
+```
+
+Replace `/absolute/path/to/demo-recorder` with the actual path where you cloned the repository.
+
+4. Source your shell configuration:
+```bash
+source ~/.bashrc  # or source ~/.zshrc
+```
+
+## Usage
+
+1. Create a `.demo-recorder.toml` file in your project directory:
+```bash
+cp /path/to/demo-recorder/.demo-recorder.template.toml /your/project/.demo-recorder.toml
+```
+
+2. Configure your recording steps in the TOML file
+
+3. Run the recorder from your project directory:
+```bash
+demo-record
+```
+
+## Configuration Example
+
+Here's a complete example of a `.demo-recorder.toml` file:
+
+```toml
+# Project configuration
+[project]
+name = "my-nuxt-app"
+baseUrl = "http://localhost:3000"
+
+[project.viewport]
+width = 1280
+height = 800
+
+# Authentication (optional)
+[auth]
+email = "${DEMO_USER_EMAIL}"
+password = "${DEMO_USER_PASSWORD}"
+
+# Recording settings
+[recording]
+output = "recordings/login-flow.mp4"
+fps = 30
+quality = 90
+
+# Demo recording steps
+[[steps]]
+type = "navigate"
+path = "/login"
+
+[[steps]]
+type = "wait"
+duration = 1000
+
+[[steps]]
+type = "input"
+selector = "[type='email']"
+value = "${auth.email}"
+
+[[steps]]
+type = "input"
+selector = "[type='password']"
+value = "${auth.password}"
+
+[[steps]]
+type = "click"
+selector = "[type='submit']"
+
+[[steps]]
+type = "wait"
+duration = 2000
+
+[[steps]]
+type = "select"
+selector = "[data-test='content-type-select']"
+option = "[data-test='content-type-twitter_post']"
+
+[[steps]]
+type = "input"
+selector = "[data-test='topic']"
+value = "The Future of AI"
+
+[[steps]]
+type = "input"
+selector = "[data-test='additional_instructions'] textarea"
+value = "Include specific examples and use cases"
+```
+
+## Step Types
+
+### Navigate
+```toml
+[[steps]]
+type = "navigate"
+path = "/some-path"  # Will be appended to baseUrl
+```
+
+### Input
+```toml
+[[steps]]
+type = "input"
+selector = "[data-test='field-name']"
+value = "Text to type"
+```
+
+### Select
+```toml
+[[steps]]
+type = "select"
+selector = "[data-test='dropdown']"
+option = "[data-test='option-value']"  # Selector for the option to click
+```
+
+### Click
+```toml
+[[steps]]
+type = "click"
+selector = "[data-test='button']"
+```
+
+### Wait
+```toml
+[[steps]]
+type = "wait"
+duration = 2000  # milliseconds
+```
+
+## Environment Variables
+
+Sensitive data like credentials should be provided through environment variables. Create a `.env` file in your project:
+
+```bash
+DEMO_USER_EMAIL=demo@example.com
+DEMO_USER_PASSWORD=your-password
+```
+
+## Requirements
+
+- Node.js 16+
+- FFmpeg (for video recording)
+- A running web application to record
+
+## Troubleshooting
+
+1. **Mouse Helper Not Visible**
+   - Check if mouse-helper is installed: `npm install mouse-helper`
+
+2. **Recording Fails**
+   - Ensure FFmpeg is installed on your system
+   - Check if the output directory exists
+   - Verify all selectors in your config exist in the page
+
+3. **Selectors Not Found**
+   - Use browser dev tools to verify selectors
+   - Ensure the page is fully loaded (add wait steps if needed)
+   - Check if elements are in iframes or shadow DOM
+
+## License
+
+MIT]]></content>
           </file>
         
           <file>
@@ -68,9 +269,14 @@ password = "${SCREENSHOT_LOGIN_PASSWORD}"
 
 # Recording settings
 [recording]
-output = "recordings/content-flow.mp4"
+output = "recordings/login-flow-with-pauses.mp4"
 fps = 30
 quality = 90
+
+# Default typing configuration for all input steps
+[recording.defaultTypeConfig]
+slowType = false
+typeDelay = 50  # Default to fast typing
 
 # Demo recording steps
 [[steps]]
@@ -79,17 +285,22 @@ path = "/login"
 
 [[steps]]
 type = "wait"
-duration = 2000
+duration = 1000
+
+[[steps]]
+type = "startRecording"  # Explicitly start recording before login sequence
 
 [[steps]]
 type = "input"
 selector = "[type='email']"
 value = "${auth.email}"
+typeConfig = { slowType = true, typeDelay = 150 }  # Override for slow typing
 
 [[steps]]
 type = "input"
 selector = "[type='password']"
 value = "${auth.password}"
+# Uses default fast typing since no typeConfig specified
 
 [[steps]]
 type = "click"
@@ -97,7 +308,11 @@ selector = "[type='submit']"
 
 [[steps]]
 type = "wait"
-duration = 2000
+duration = 1000
+
+[[steps]]
+type = "pauseRecording"  # Pause during the long loading time
+
 
 # Navigate to content page
 [[steps]]
@@ -106,7 +321,10 @@ path = "/content"
 
 [[steps]]
 type = "wait"
-duration = 2000
+duration = 5000
+
+[[steps]]
+type = "resumeRecording" # Resume recording after the long loading time
 
 # Select content type
 [[steps]]
@@ -150,6 +368,7 @@ duration = 1000
 type = "input"
 selector = "[data-test='topic']"
 value = "The Future of AI Development"
+typeConfig = { slowType = true, typeDelay = 200 }
 
 [[steps]]
 type = "wait"
@@ -158,12 +377,16 @@ duration = 1000
 # Fill additional instructions
 [[steps]]
 type = "input"
-selector = "[data-test='additional_instructions'] textarea"
+selector = "[data-test='additional_instructions']"
 value = "Include specific examples of AI tools in development workflows."
+# Uses default fast typing since no typeConfig specified
 
 [[steps]]
 type = "wait"
-duration = 6000]]></content>
+duration = 6000
+
+[[steps]]
+type = "stopRecording" ]]></content>
           </file>
         
           <file>
@@ -173,7 +396,11 @@ duration = 6000]]></content>
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "init": "ts-node src/index.ts init",
+    "record": "ts-node src/index.ts record",
+    "start": "ts-node src/index.ts",
+    "prepare": "npm run build"
   },
   "keywords": [],
   "author": "",
@@ -183,6 +410,11 @@ duration = 6000]]></content>
     "mouse-helper": "^1.0.7",
     "puppeteer": "^24.0.0",
     "toml": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
   }
 }
 ]]></content>
@@ -424,16 +656,70 @@ export function createConfigFile(configPath: string): void {
     throw new Error('Example config file not found. Please ensure example-config.toml exists in the project root.');
   }
 
-  // Copy the example config
   fs.copyFileSync(exampleConfigPath, configPath);
   console.log(`Created new config file at ${configPath}`);
   console.log('Please customize the config file for your specific needs.');
 }
 
+function interpolateEnvVariables(obj: any): any {
+  if (typeof obj === 'string') {
+    return obj.replace(/\${([^}]+)}/g, (match, envVar) => {
+      // Check if it's a nested reference like auth.email
+      const parts = envVar.split('.');
+      if (parts.length > 1) {
+        return match; // Keep the original ${auth.email} format for nested refs
+      }
+      return process.env[envVar] || match;
+    });
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => interpolateEnvVariables(item));
+  }
+
+  if (obj && typeof obj === 'object') {
+    const result: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = interpolateEnvVariables(value);
+    }
+    return result;
+  }
+
+  return obj;
+}
+
+function interpolateConfigReferences(config: any): any {
+  let stringified = JSON.stringify(config);
+  
+  // Replace ${auth.email} and similar with actual values
+  stringified = stringified.replace(/\${([^}]+)}/g, (match, path) => {
+    const parts = path.split('.');
+    let value = config;
+    for (const part of parts) {
+      if (value && typeof value === 'object' && part in value) {
+        value = value[part];
+      } else {
+        return match; // Keep original if path not found
+      }
+    }
+    return typeof value === 'string' ? value : match;
+  });
+
+  return JSON.parse(stringified);
+}
+
 export function readConfig(configPath: string): DemoConfig {
   try {
     const content = fs.readFileSync(configPath, 'utf-8');
-    return TOML.parse(content) as DemoConfig;
+    let config = TOML.parse(content) as DemoConfig;
+    
+    // First interpolate environment variables
+    config = interpolateEnvVariables(config);
+    
+    // Then interpolate config references
+    config = interpolateConfigReferences(config);
+    
+    return config;
   } catch (error) {
     console.error(`Error reading config at ${configPath}:`, error);
     throw error;
@@ -460,16 +746,55 @@ export function initializeConfig(targetDir: string): DemoConfig {
             <content><![CDATA[// src/index.ts
 import * as path from 'path';
 import * as fs from 'fs';
-import { initializeConfig } from './config';
+import { initializeConfig, ensureConfigExists } from './config';
 import { DemoRecorder } from './recorder/CustomScreenRecorder';
 
 // Get command line arguments
 const args = process.argv.slice(2);
-const targetDir = path.resolve(args[0] || process.cwd());
+let command = 'record';  // default command
+let targetDir = process.cwd();  // default directory
 
-async function main() {
+// If we have arguments, check their order
+if (args.length > 0) {
+  // If the first arg is a command, use it and look for dir in second arg
+  if (args[0] === 'init' || args[0] === 'record') {
+    command = args[0];
+    targetDir = args[1] ? path.resolve(args[1]) : process.cwd();
+  } else {
+    // If first arg isn't a command, it must be the directory
+    targetDir = path.resolve(args[0]);
+  }
+}
+
+console.log(`Command: ${command}`);
+console.log(`Target directory: ${targetDir}`);
+
+async function init() {
   try {
-    // Verify target directory exists
+    if (!fs.existsSync(targetDir)) {
+      console.error(`Error: Target directory does not exist: ${targetDir}`);
+      process.exit(1);
+    }
+
+    console.log(`Initializing demo recorder config in: ${targetDir}`);
+    
+    // This will create the config file if it doesn't exist
+    const configPath = ensureConfigExists(targetDir);
+    
+    console.log('\nConfiguration file created successfully!');
+    console.log(`Please edit ${configPath} to configure your recording steps.`);
+    console.log('\nOnce configured, you can run:');
+    console.log('demo-record');
+    console.log('\nto start the recording.');
+
+  } catch (error) {
+    console.error('Initialization failed:', error);
+    process.exit(1);
+  }
+}
+
+async function record() {
+  try {
     if (!fs.existsSync(targetDir)) {
       console.error(`Error: Target directory does not exist: ${targetDir}`);
       process.exit(1);
@@ -477,7 +802,7 @@ async function main() {
 
     console.log(`Starting demo recorder for directory: ${targetDir}`);
 
-    // This will create the config file if it doesn't exist
+    // Load and validate config
     const config = initializeConfig(targetDir);
 
     // Create output directory if specified in config
@@ -496,6 +821,26 @@ async function main() {
   }
 }
 
+// Main execution
+async function main() {
+  try {
+    switch (command) {
+      case 'init':
+        await init();
+        break;
+      case 'record':
+        await record();
+        break;
+      default:
+        console.error('Unknown command. Use "init" or "record"');
+        process.exit(1);
+    }
+  } catch (error) {
+    console.error('Unexpected error:', error);
+    process.exit(1);
+  }
+}
+
 // Run the main function
 main().catch((error) => {
   console.error('Unexpected error:', error);
@@ -506,19 +851,33 @@ main().catch((error) => {
         
           <file>
             <path>src/recorder/CustomScreenRecorder.ts</path>
-            <content><![CDATA[// src/recorder/CustomScreenRecorder.ts
+            <content><![CDATA[//src/recorder/CustomScreenRecorder.ts
 import * as puppeteer from 'puppeteer';
 import { spawn } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import { MouseActions } from '../actions/MouseActions';
 import { InputActions } from '../actions/InputActions';
 import { SelectActions } from '../actions/SelectActions';
 import { delay } from '../utils/delay';
 import { DemoConfig, RecordingOptions } from './types';
+import { checkMouseHelper } from '../utils/mouse-helper';
 
-export class CustomScreenRecorder {
+class CustomScreenRecorder {
   private ffmpeg: any;
   private frameCount: number = 0;
   private client: puppeteer.CDPSession | null = null;
+  private isRecording: boolean = false;
+  private isPaused: boolean = false;
+  private pausedTime: number = 0;
+
+  public getStatus() {
+    return {
+      isRecording: this.isRecording,
+      isPaused: this.isPaused
+    };
+  }
+
 
   constructor(
     private page: puppeteer.Page,
@@ -529,10 +888,18 @@ export class CustomScreenRecorder {
       videoCodec: 'libx264',
       videoPreset: 'ultrafast'
     }
-  ) {}
+  ) { }
 
   async start(outputPath: string): Promise<void> {
+    // Ensure the output directory exists
+    const outputDir = path.dirname(outputPath);
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
     this.client = await this.page.createCDPSession();
+    this.isRecording = true;
+    this.isPaused = false;
 
     this.ffmpeg = spawn('ffmpeg', [
       '-y',
@@ -559,10 +926,10 @@ export class CustomScreenRecorder {
     await this.client.on('Page.screencastFrame', async (frame) => {
       try {
         if (!this.client) return;
-        
+
         this.ffmpeg.stdin.write(Buffer.from(frame.data, 'base64'));
         this.frameCount++;
-        
+
         await this.client.send('Page.screencastFrameAck', {
           sessionId: frame.sessionId
         }).catch(console.error);
@@ -577,7 +944,7 @@ export class CustomScreenRecorder {
       try {
         await this.client.send('Page.stopScreencast');
         this.ffmpeg.stdin.end();
-        
+
         await new Promise<void>((resolve, reject) => {
           this.ffmpeg.on('close', (code: number) => {
             if (code === 0) {
@@ -597,9 +964,34 @@ export class CustomScreenRecorder {
       }
     }
   }
+
+  async pause(): Promise<void> {
+    if (!this.isRecording || this.isPaused) return;
+
+    if (this.client) {
+      await this.client.send('Page.stopScreencast');
+      this.isPaused = true;
+      this.pausedTime = Date.now();
+      console.log('Recording paused');
+    }
+  }
+
+  async resume(): Promise<void> {
+    if (!this.isRecording || !this.isPaused) return;
+
+    if (this.client) {
+      await this.client.send('Page.startScreencast', {
+        format: 'jpeg',
+        quality: this.options.quality,
+        everyNthFrame: 1
+      });
+      this.isPaused = false;
+      console.log(`Recording resumed after ${Date.now() - this.pausedTime}ms pause`);
+    }
+  }
 }
 
-export class DemoRecorder {
+class DemoRecorder {
   private browser?: puppeteer.Browser;
   private page?: puppeteer.Page;
   private recorder?: CustomScreenRecorder;
@@ -607,7 +999,7 @@ export class DemoRecorder {
   private inputActions?: InputActions;
   private selectActions?: SelectActions;
 
-  constructor(private config: DemoConfig) {}
+  constructor(private config: DemoConfig) { }
 
   async initialize() {
     this.browser = await puppeteer.launch({
@@ -617,7 +1009,9 @@ export class DemoRecorder {
 
     this.page = await this.browser.newPage();
     await this.initializeMouseHelper();
-    
+
+    await checkMouseHelper(this.page);
+
     this.recorder = new CustomScreenRecorder(this.page);
     this.mouseActions = new MouseActions(this.page);
     this.inputActions = new InputActions(this.page);
@@ -627,16 +1021,52 @@ export class DemoRecorder {
   private async initializeMouseHelper() {
     if (!this.page) throw new Error('Page not initialized');
 
-    await this.page.evaluateOnNewDocument(`
-      window.self = window;
-      if (document.readyState === 'complete') {
-        window['mouse-helper']();
-      } else {
-        document.addEventListener('DOMContentLoaded', () => {
-          window['mouse-helper']();
+    try {
+      const mouseHelperPath = require.resolve('mouse-helper/dist/mouse-helper.js');
+      console.log('Mouse helper path:', mouseHelperPath);
+      const mouseHelperContent = fs.readFileSync(mouseHelperPath, 'utf8');
+      console.log('Mouse helper content loaded, length:', mouseHelperContent.length);
+
+      // Add the mouse-helper script to be evaluated on each new document
+      await this.page.evaluateOnNewDocument(mouseHelperContent);
+
+      // Also initialize it on the current page
+      await this.page.evaluate(mouseHelperContent);
+
+      // Add initialization calls
+      await this.page.evaluateOnNewDocument(`
+        window.self = window;
+        window.addEventListener('load', () => {
+          if (typeof window['mouse-helper'] === 'function') {
+            console.log('Initializing mouse helper on load');
+            window['mouse-helper']();
+          } else {
+            console.error('Mouse helper function not found on load');
+          }
         });
-      }
-    `);
+        if (document.readyState === 'complete') {
+          if (typeof window['mouse-helper'] === 'function') {
+            console.log('Initializing mouse helper immediately');
+            window['mouse-helper']();
+          }
+        }
+      `);
+
+      // Initialize on current page if already loaded
+      await this.page.evaluate(`
+        window.self = window;
+        if (typeof window['mouse-helper'] === 'function') {
+          console.log('Initializing mouse helper on current page');
+          window['mouse-helper']();
+        } else {
+          console.error('Mouse helper function not found on current page');
+        }
+      `);
+
+    } catch (error) {
+      console.error('Failed to initialize mouse helper:', error);
+      console.error('Error details:', error instanceof Error ? error.message : String(error));
+    }
   }
 
   async executeStep(step: any) {
@@ -644,33 +1074,71 @@ export class DemoRecorder {
       throw new Error('Recorder not properly initialized');
     }
 
-    switch (step.type) {
-      case 'navigate':
-        await this.page.goto(`${this.config.project.baseUrl}${step.path}`, {
-          waitUntil: ['networkidle0', 'load']
-        });
-        break;
+    try {
+      console.log(`Executing step: ${step.type}`);
 
-      case 'input':
-        await this.inputActions.typeText(step.selector!, step.value!, {
-          isTextarea: step.selector?.includes('textarea')
-        });
-        break;
+      switch (step.type) {
+        case 'navigate':
+          console.log(`Navigating to: ${this.config.project.baseUrl}${step.path}`);
+          await this.page.goto(`${this.config.project.baseUrl}${step.path}`, {
+            waitUntil: ['networkidle0', 'load']
+          });
+          await delay(1000); // Give time for mouse helper to initialize
+          break;
 
-      case 'select':
-        await this.selectActions.select(step.selector!, step.option!);
-        break;
+          case 'input':
+            console.log(`Typing into: ${step.selector}`);
+            const typeConfig = {
+              ...this.config.recording.defaultTypeConfig,
+              ...step.typeConfig
+            };
+            await this.inputActions.typeText(step.selector!, step.value!, {
+              isTextarea: step.selector?.includes('textarea'),
+              delay: typeConfig.slowType ? (typeConfig.typeDelay || 150) : 50
+            });
+          break;
 
-      case 'click':
-        await this.mouseActions.click(step.selector!);
-        break;
+        case 'select':
+          console.log(`Selecting from: ${step.selector}`);
+          await this.selectActions.select(step.selector!, step.option!);
+          break;
 
-      case 'wait':
-        await delay(step.duration || 1000);
-        break;
+        case 'click':
+          console.log(`Clicking: ${step.selector}`);
+          await this.mouseActions.click(step.selector!);
+          break;
 
-      default:
-        console.warn(`Unknown step type: ${step.type}`);
+        case 'wait':
+          console.log(`Waiting: ${step.duration}ms`);
+          await delay(step.duration || 1000);
+          break;
+
+        case 'startRecording':
+          if (!this.recorder) throw new Error('Recorder not initialized');
+          await this.recorder.start(this.config.recording.output);
+          break;
+
+        case 'stopRecording':
+          if (!this.recorder) throw new Error('Recorder not initialized');
+          await this.recorder.stop();
+          break;
+
+        case 'pauseRecording':
+          if (!this.recorder) throw new Error('Recorder not initialized');
+          await this.recorder.pause();
+          break;
+
+        case 'resumeRecording':
+          if (!this.recorder) throw new Error('Recorder not initialized');
+          await this.recorder.resume();
+          break;
+
+        default:
+          console.warn(`Unknown step type: ${step.type}`);
+      }
+    } catch (error) {
+      console.error(`Error executing step ${step.type}:`, error);
+      throw error;
     }
   }
 
@@ -678,16 +1146,17 @@ export class DemoRecorder {
     try {
       await this.initialize();
       if (!this.page || !this.recorder) throw new Error('Failed to initialize');
-
-      console.log('Starting recording...');
-      await this.recorder.start(this.config.recording.output);
-
+  
+      // Don't auto-start recording - wait for a startRecording step
       for (const step of this.config.steps) {
         await this.executeStep(step);
       }
-
-      console.log('Stopping recording...');
-      await this.recorder.stop();
+  
+      // Only stop if we're still recording at the end
+      if (this.recorder.getStatus().isRecording) {
+        console.log('Stopping recording...');
+        await this.recorder.stop();
+      }
     } catch (error) {
       console.error('Recording error:', error);
       throw error;
@@ -698,6 +1167,8 @@ export class DemoRecorder {
     }
   }
 }
+
+export { CustomScreenRecorder, DemoRecorder };
 ]]></content>
           </file>
         
@@ -718,14 +1189,32 @@ export interface RecordingOptions {
   videoPreset: string;
 }
 
+export interface TypeConfig {
+  slowType?: boolean;
+  typeDelay?: number;  // milliseconds between keystrokes
+}
+
 export interface Step {
-  type: 'navigate' | 'input' | 'select' | 'click' | 'wait';
+  type: StepType;
   selector?: string;
   value?: string;
   option?: string;
   duration?: number;
   path?: string;
+  typeConfig?: TypeConfig;
 }
+
+export type StepType = 
+  | 'navigate' 
+  | 'input' 
+  | 'select' 
+  | 'click' 
+  | 'wait'
+  | 'startRecording'
+  | 'stopRecording'
+  | 'pauseRecording'
+  | 'resumeRecording';
+
 
 export interface ProjectConfig {
   name: string;
@@ -742,6 +1231,7 @@ export interface RecordingConfig {
   output: string;
   fps: number;
   quality: number;
+  defaultTypeConfig?: TypeConfig;
 }
 
 export interface DemoConfig {
@@ -919,7 +1409,13 @@ export async function closeBrowser(browser: puppeteer.Browser | undefined) {
         
           <file>
             <path>src/utils/delay.ts</path>
-            <content><![CDATA[]]></content>
+            <content><![CDATA[// src/utils/delay.ts
+/**
+ * Creates a promise that resolves after a specified number of milliseconds
+ * @param ms Number of milliseconds to wait
+ * @returns Promise that resolves after the specified delay
+ */
+export const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));]]></content>
           </file>
         
           <file>

@@ -14,9 +14,14 @@ password = "${SCREENSHOT_LOGIN_PASSWORD}"
 
 # Recording settings
 [recording]
-output = "recordings/content-flow.mp4"
+output = "recordings/login-flow-with-pauses.mp4"
 fps = 30
 quality = 90
+
+# Default typing configuration for all input steps
+[recording.defaultTypeConfig]
+slowType = false
+typeDelay = 50  # Default to fast typing
 
 # Demo recording steps
 [[steps]]
@@ -25,17 +30,22 @@ path = "/login"
 
 [[steps]]
 type = "wait"
-duration = 2000
+duration = 1000
+
+[[steps]]
+type = "startRecording"  # Explicitly start recording before login sequence
 
 [[steps]]
 type = "input"
 selector = "[type='email']"
 value = "${auth.email}"
+typeConfig = { slowType = true, typeDelay = 150 }  # Override for slow typing
 
 [[steps]]
 type = "input"
 selector = "[type='password']"
 value = "${auth.password}"
+# Uses default fast typing since no typeConfig specified
 
 [[steps]]
 type = "click"
@@ -43,7 +53,11 @@ selector = "[type='submit']"
 
 [[steps]]
 type = "wait"
-duration = 2000
+duration = 1000
+
+[[steps]]
+type = "pauseRecording"  # Pause during the long loading time
+
 
 # Navigate to content page
 [[steps]]
@@ -52,7 +66,10 @@ path = "/content"
 
 [[steps]]
 type = "wait"
-duration = 2000
+duration = 5000
+
+[[steps]]
+type = "resumeRecording" # Resume recording after the long loading time
 
 # Select content type
 [[steps]]
@@ -96,17 +113,27 @@ duration = 1000
 type = "input"
 selector = "[data-test='topic']"
 value = "The Future of AI Development"
+typeConfig = { slowType = true, typeDelay = 200 }
 
 [[steps]]
 type = "wait"
 duration = 1000
 
+[[steps]]
+type = "scrollDown"
+pixels = 500  # scroll down 500 pixels
+duration = 1000  # take 1 second to complete the scroll
+
 # Fill additional instructions
 [[steps]]
 type = "input"
-selector = "[data-test='additional_instructions'] textarea"
+selector = "[data-test='additional_instructions']"
 value = "Include specific examples of AI tools in development workflows."
+# Uses default fast typing since no typeConfig specified
 
 [[steps]]
 type = "wait"
-duration = 6000
+duration = 2000
+
+[[steps]]
+type = "stopRecording" 

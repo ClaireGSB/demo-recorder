@@ -14,6 +14,17 @@ class CustomScreenRecorder {
   private ffmpeg: any;
   private frameCount: number = 0;
   private client: puppeteer.CDPSession | null = null;
+  private isRecording: boolean = false;
+  private isPaused: boolean = false;
+  private pausedTime: number = 0;
+
+  public getStatus() {
+    return {
+      isRecording: this.isRecording,
+      isPaused: this.isPaused
+    };
+  }
+
 
   constructor(
     private page: puppeteer.Page,
@@ -24,7 +35,7 @@ class CustomScreenRecorder {
       videoCodec: 'libx264',
       videoPreset: 'ultrafast'
     }
-  ) {}
+  ) { }
 
   async start(outputPath: string): Promise<void> {
     // Ensure the output directory exists
@@ -34,6 +45,8 @@ class CustomScreenRecorder {
     }
 
     this.client = await this.page.createCDPSession();
+    this.isRecording = true;
+    this.isPaused = false;
 
     this.ffmpeg = spawn('ffmpeg', [
       '-y',
@@ -60,10 +73,10 @@ class CustomScreenRecorder {
     await this.client.on('Page.screencastFrame', async (frame) => {
       try {
         if (!this.client) return;
-        
+
         this.ffmpeg.stdin.write(Buffer.from(frame.data, 'base64'));
         this.frameCount++;
-        
+
         await this.client.send('Page.screencastFrameAck', {
           sessionId: frame.sessionId
         }).catch(console.error);
@@ -78,7 +91,7 @@ class CustomScreenRecorder {
       try {
         await this.client.send('Page.stopScreencast');
         this.ffmpeg.stdin.end();
-        
+
         await new Promise<void>((resolve, reject) => {
           this.ffmpeg.on('close', (code: number) => {
             if (code === 0) {
@@ -98,6 +111,31 @@ class CustomScreenRecorder {
       }
     }
   }
+
+  async pause(): Promise<void> {
+    if (!this.isRecording || this.isPaused) return;
+
+    if (this.client) {
+      await this.client.send('Page.stopScreencast');
+      this.isPaused = true;
+      this.pausedTime = Date.now();
+      console.log('Recording paused');
+    }
+  }
+
+  async resume(): Promise<void> {
+    if (!this.isRecording || !this.isPaused) return;
+
+    if (this.client) {
+      await this.client.send('Page.startScreencast', {
+        format: 'jpeg',
+        quality: this.options.quality,
+        everyNthFrame: 1
+      });
+      this.isPaused = false;
+      console.log(`Recording resumed after ${Date.now() - this.pausedTime}ms pause`);
+    }
+  }
 }
 
 class DemoRecorder {
@@ -108,7 +146,7 @@ class DemoRecorder {
   private inputActions?: InputActions;
   private selectActions?: SelectActions;
 
-  constructor(private config: DemoConfig) {}
+  constructor(private config: DemoConfig) { }
 
   async initialize() {
     this.browser = await puppeteer.launch({
@@ -120,7 +158,7 @@ class DemoRecorder {
     await this.initializeMouseHelper();
 
     await checkMouseHelper(this.page);
-    
+
     this.recorder = new CustomScreenRecorder(this.page);
     this.mouseActions = new MouseActions(this.page);
     this.inputActions = new InputActions(this.page);
@@ -185,7 +223,7 @@ class DemoRecorder {
 
     try {
       console.log(`Executing step: ${step.type}`);
-      
+
       switch (step.type) {
         case 'navigate':
           console.log(`Navigating to: ${this.config.project.baseUrl}${step.path}`);
@@ -195,11 +233,16 @@ class DemoRecorder {
           await delay(1000); // Give time for mouse helper to initialize
           break;
 
-        case 'input':
-          console.log(`Typing into: ${step.selector}`);
-          await this.inputActions.typeText(step.selector!, step.value!, {
-            isTextarea: step.selector?.includes('textarea')
-          });
+          case 'input':
+            console.log(`Typing into: ${step.selector}`);
+            const typeConfig = {
+              ...this.config.recording.defaultTypeConfig,
+              ...step.typeConfig
+            };
+            await this.inputActions.typeText(step.selector!, step.value!, {
+              isTextarea: step.selector?.includes('textarea'),
+              delay: typeConfig.slowType ? (typeConfig.typeDelay || 150) : 0
+            });
           break;
 
         case 'select':
@@ -217,6 +260,34 @@ class DemoRecorder {
           await delay(step.duration || 1000);
           break;
 
+        case 'scrollDown':
+          console.log(`Scrolling: ${step.pixels}px`);
+          await this.mouseActions?.smoothScroll(
+            step.pixels,
+            step.duration || 1000
+          );
+          break;
+
+        case 'startRecording':
+          if (!this.recorder) throw new Error('Recorder not initialized');
+          await this.recorder.start(this.config.recording.output);
+          break;
+
+        case 'stopRecording':
+          if (!this.recorder) throw new Error('Recorder not initialized');
+          await this.recorder.stop();
+          break;
+
+        case 'pauseRecording':
+          if (!this.recorder) throw new Error('Recorder not initialized');
+          await this.recorder.pause();
+          break;
+
+        case 'resumeRecording':
+          if (!this.recorder) throw new Error('Recorder not initialized');
+          await this.recorder.resume();
+          break;
+
         default:
           console.warn(`Unknown step type: ${step.type}`);
       }
@@ -230,16 +301,17 @@ class DemoRecorder {
     try {
       await this.initialize();
       if (!this.page || !this.recorder) throw new Error('Failed to initialize');
-
-      console.log('Starting recording...');
-      await this.recorder.start(this.config.recording.output);
-
+  
+      // Don't auto-start recording - wait for a startRecording step
       for (const step of this.config.steps) {
         await this.executeStep(step);
       }
-
-      console.log('Stopping recording...');
-      await this.recorder.stop();
+  
+      // Only stop if we're still recording at the end
+      if (this.recorder.getStatus().isRecording) {
+        console.log('Stopping recording...');
+        await this.recorder.stop();
+      }
     } catch (error) {
       console.error('Recording error:', error);
       throw error;
