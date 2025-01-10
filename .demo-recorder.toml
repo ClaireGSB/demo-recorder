@@ -1,0 +1,112 @@
+# Project configuration
+[project]
+name = "demo-nuxt-app"
+baseUrl = "http://localhost:3001"
+
+[project.viewport]
+width = 1280
+height = 800
+
+# Authentication settings (using environment variables)
+[auth]
+email = "${SCREENSHOT_LOGIN_EMAIL}"
+password = "${SCREENSHOT_LOGIN_PASSWORD}"
+
+# Recording settings
+[recording]
+output = "recordings/content-flow.mp4"
+fps = 30
+quality = 90
+
+# Demo recording steps
+[[steps]]
+type = "navigate"
+path = "/login"
+
+[[steps]]
+type = "wait"
+duration = 2000
+
+[[steps]]
+type = "input"
+selector = "[type='email']"
+value = "${auth.email}"
+
+[[steps]]
+type = "input"
+selector = "[type='password']"
+value = "${auth.password}"
+
+[[steps]]
+type = "click"
+selector = "[type='submit']"
+
+[[steps]]
+type = "wait"
+duration = 2000
+
+# Navigate to content page
+[[steps]]
+type = "navigate"
+path = "/content"
+
+[[steps]]
+type = "wait"
+duration = 2000
+
+# Select content type
+[[steps]]
+type = "select"
+selector = "[data-test='content-type-select']"
+option = "[data-test='content-type-twitter_post']"
+
+[[steps]]
+type = "wait"
+duration = 500
+
+# Select voice
+[[steps]]
+type = "select"
+selector = "[data-test='voice-select']"
+option = "[data-test='voice-Nativish']"
+
+[[steps]]
+type = "wait"
+duration = 500
+
+# Select action
+[[steps]]
+type = "click"
+selector = "[data-test='action-select']"
+
+[[steps]]
+type = "wait"
+duration = 1000
+
+[[steps]]
+type = "click"
+selector = "[data-test='write_topic']"
+
+[[steps]]
+type = "wait"
+duration = 1000
+
+# Fill topic field
+[[steps]]
+type = "input"
+selector = "[data-test='topic']"
+value = "The Future of AI Development"
+
+[[steps]]
+type = "wait"
+duration = 1000
+
+# Fill additional instructions
+[[steps]]
+type = "input"
+selector = "[data-test='additional_instructions']"
+value = "Include specific examples of AI tools in development workflows."
+
+[[steps]]
+type = "wait"
+duration = 6000

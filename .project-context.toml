@@ -1,0 +1,41 @@
+# Files/directories to exclude from tree visualization
+excluded_from_file_tree = [
+  ".nuxt",
+  ".git",
+  ".output",
+  "node_modules",
+  ".project-context.toml",
+  "build",
+  "dist"
+]
+
+# Files/directories to completely ignore
+ignored_paths = [
+  ".nuxt",
+  ".output",
+  "yarn.lock",
+  "node_modules",
+  ".git",
+  ".project-context.toml",
+  "build",
+  "dist",
+  "package-lock.json",
+]
+
+# Paths to include in XML content
+included_paths = [
+  "README.md",
+  "example-config.toml",
+  "package.json",
+  # "project-context.xml",
+  "src/actions/InputActions.ts",
+  "src/actions/MouseActions.ts",
+  "src/actions/SelectActions.ts",
+  "src/config.ts",
+  "src/index.ts",
+  "src/recorder/CustomScreenRecorder.ts",
+  "src/recorder/types.ts",
+  "src/utils/browser.ts",
+  "src/utils/delay.ts",
+  "tsconfig.json"
+]

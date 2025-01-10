@@ -1,0 +1,946 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<projectContext>
+  <projectInfo>
+  <name>demo-recorder</name>
+  <version>1.0.0</version>
+  <dependencies>
+    <dependency>
+      <name>mouse-helper</name>
+      <version>^1.0.7</version>
+    </dependency>
+    <dependency>
+      <name>puppeteer</name>
+      <version>^24.0.0</version>
+    </dependency>
+    <dependency>
+      <name>toml</name>
+      <version>^3.0.0</version>
+    </dependency>
+  </dependencies>
+</projectInfo>
+  <fileTree>
+    <![CDATA[
+├── README.md
+├── example-config.toml
+├── package-lock.json
+├── package.json
+├── project-context.xml
+├── src/
+│   ├── actions/
+│   │   ├── InputActions.ts
+│   │   ├── MouseActions.ts
+│   │   └── SelectActions.ts
+│   ├── config.ts
+│   ├── index.ts
+│   ├── recorder/
+│   │   ├── CustomScreenRecorder.ts
+│   │   └── types.ts
+│   └── utils/
+│       ├── browser.ts
+│       └── delay.ts
+├── tsconfig.json
+└── yarn.lock
+
+    ]]>
+  </fileTree>
+  <fileContents>
+    
+          <file>
+            <path>README.md</path>
+            <content><![CDATA[]]></content>
+          </file>
+        
+          <file>
+            <path>example-config.toml</path>
+            <content><![CDATA[# Project configuration
+[project]
+name = "demo-nuxt-app"
+baseUrl = "http://localhost:3001"
+
+[project.viewport]
+width = 1280
+height = 800
+
+# Authentication settings (using environment variables)
+[auth]
+email = "${SCREENSHOT_LOGIN_EMAIL}"
+password = "${SCREENSHOT_LOGIN_PASSWORD}"
+
+# Recording settings
+[recording]
+output = "recordings/content-flow.mp4"
+fps = 30
+quality = 90
+
+# Demo recording steps
+[[steps]]
+type = "navigate"
+path = "/login"
+
+[[steps]]
+type = "wait"
+duration = 2000
+
+[[steps]]
+type = "input"
+selector = "[type='email']"
+value = "${auth.email}"
+
+[[steps]]
+type = "input"
+selector = "[type='password']"
+value = "${auth.password}"
+
+[[steps]]
+type = "click"
+selector = "[type='submit']"
+
+[[steps]]
+type = "wait"
+duration = 2000
+
+# Navigate to content page
+[[steps]]
+type = "navigate"
+path = "/content"
+
+[[steps]]
+type = "wait"
+duration = 2000
+
+# Select content type
+[[steps]]
+type = "select"
+selector = "[data-test='content-type-select']"
+option = "[data-test='content-type-twitter_post']"
+
+[[steps]]
+type = "wait"
+duration = 500
+
+# Select voice
+[[steps]]
+type = "select"
+selector = "[data-test='voice-select']"
+option = "[data-test='voice-Nativish']"
+
+[[steps]]
+type = "wait"
+duration = 500
+
+# Select action
+[[steps]]
+type = "click"
+selector = "[data-test='action-select']"
+
+[[steps]]
+type = "wait"
+duration = 1000
+
+[[steps]]
+type = "click"
+selector = "[data-test='write_topic']"
+
+[[steps]]
+type = "wait"
+duration = 1000
+
+# Fill topic field
+[[steps]]
+type = "input"
+selector = "[data-test='topic']"
+value = "The Future of AI Development"
+
+[[steps]]
+type = "wait"
+duration = 1000
+
+# Fill additional instructions
+[[steps]]
+type = "input"
+selector = "[data-test='additional_instructions'] textarea"
+value = "Include specific examples of AI tools in development workflows."
+
+[[steps]]
+type = "wait"
+duration = 6000]]></content>
+          </file>
+        
+          <file>
+            <path>package.json</path>
+            <content><![CDATA[{
+  "name": "demo-recorder",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "mouse-helper": "^1.0.7",
+    "puppeteer": "^24.0.0",
+    "toml": "^3.0.0"
+  }
+}
+]]></content>
+          </file>
+        
+          <file>
+            <path>src/actions/InputActions.ts</path>
+            <content><![CDATA[// src/actions/InputActions.ts
+import { Page } from 'puppeteer';
+import { MouseActions } from './MouseActions';
+import { delay } from '../utils/delay';
+
+export interface TypeOptions {
+  delay?: number;
+  isTextarea?: boolean;
+}
+
+export class InputActions {
+  private mouseActions: MouseActions;
+
+  constructor(private page: Page) {
+    this.mouseActions = new MouseActions(page);
+  }
+
+  async typeText(selector: string, text: string, options: TypeOptions = {}) {
+    const { 
+      delay: typeDelay = 100, 
+      isTextarea = false 
+    } = options;
+
+    // Use mouse movement for more natural interaction
+    const targetSelector = isTextarea ? `${selector} textarea` : selector;
+    await this.mouseActions.click(targetSelector);
+    
+    // Ensure element is focused
+    await this.page.focus(targetSelector);
+    
+    // Type with delay for natural appearance
+    await this.page.type(targetSelector, text, { delay: typeDelay });
+    
+    // Small pause after typing
+    await delay(500);
+  }
+
+  async clearAndType(selector: string, text: string, options: TypeOptions = {}) {
+    const targetSelector = options.isTextarea ? `${selector} textarea` : selector;
+    
+    await this.mouseActions.click(targetSelector);
+    await this.page.focus(targetSelector);
+    
+    // Clear existing content
+    await this.page.keyboard.down('Control');
+    await this.page.keyboard.press('A');
+    await this.page.keyboard.up('Control');
+    await this.page.keyboard.press('Backspace');
+    
+    // Type new content
+    await this.typeText(selector, text, options);
+  }
+}
+]]></content>
+          </file>
+        
+          <file>
+            <path>src/actions/MouseActions.ts</path>
+            <content><![CDATA[// src/actions/MouseActions.ts
+import { Page } from 'puppeteer';
+import { delay } from '../utils/delay';
+
+export interface MouseMoveOptions {
+  delayMs?: number;
+  shouldClick?: boolean;
+  steps?: number;
+}
+
+export class MouseActions {
+  private currentX: number = 0;
+  private currentY: number = 0;
+
+  constructor(private page: Page) {}
+
+  async moveWithDelay(selector: string, options: MouseMoveOptions = {}) {
+    const { 
+      delayMs = 500, 
+      shouldClick = true,
+      steps = 25 
+    } = options;
+
+    const element = await this.page.$(selector);
+    if (!element) {
+      console.warn(`Element not found: ${selector}`);
+      return false;
+    }
+
+    const box = await element.boundingBox();
+    if (!box) {
+      console.warn(`Could not get bounding box for: ${selector}`);
+      return false;
+    }
+
+    const startX = this.currentX;
+    const startY = this.currentY;
+    const endX = box.x + box.width / 2;
+    const endY = box.y + box.height / 2;
+
+    // Smooth mouse movement
+    for (let i = 0; i <= steps; i++) {
+      const x = startX + (endX - startX) * (i / steps);
+      const y = startY + (endY - startY) * (i / steps);
+      await this.page.mouse.move(x, y);
+      this.currentX = x;
+      this.currentY = y;
+      await delay(delayMs / steps);
+    }
+
+    if (shouldClick) {
+      await this.page.mouse.down();
+      await delay(100);
+      await this.page.mouse.up();
+      await delay(200);
+    }
+
+    return true;
+  }
+
+  async click(selector: string) {
+    return this.moveWithDelay(selector, { shouldClick: true });
+  }
+
+  getPosition() {
+    return { x: this.currentX, y: this.currentY };
+  }
+}
+]]></content>
+          </file>
+        
+          <file>
+            <path>src/actions/SelectActions.ts</path>
+            <content><![CDATA[// src/actions/SelectActions.ts
+import { Page, ElementHandle } from 'puppeteer';
+import { MouseActions } from './MouseActions';
+import { delay } from '../utils/delay';
+
+export class SelectActions {
+  private mouseActions: MouseActions;
+
+  constructor(private page: Page) {
+    this.mouseActions = new MouseActions(page);
+  }
+
+  async select(selectSelector: string, optionSelector: string) {
+    // Open the select
+    await this.mouseActions.click(selectSelector);
+    
+    // Wait for options to be visible
+    await delay(500);
+    
+    // Select the option
+    await this.mouseActions.click(optionSelector);
+    
+    // Wait for select to close
+    await delay(500);
+  }
+
+  async selectByText(selectSelector: string, text: string) {
+    await this.mouseActions.click(selectSelector);
+    await delay(500);
+
+    try {
+      // Use page.$ instead of evaluateHandle for proper typing
+      const options = await this.page.$$(`${selectSelector} .v-list-item`);
+      
+      for (const option of options) {
+        const textContent = await option.evaluate(el => el.textContent);
+        if (textContent?.includes(text)) {
+          await option.click();
+          await delay(500);
+          return;
+        }
+      }
+      
+      console.warn(`Option with text "${text}" not found in select ${selectSelector}`);
+    } catch (error) {
+      console.error(`Error selecting option: ${error}`);
+    }
+  }
+
+  async selectByTextSimple(selectSelector: string, text: string) {
+    try {
+      await this.mouseActions.click(selectSelector);
+      await delay(500);
+
+      // Use waitForSelector to ensure the list is visible
+      const optionSelector = `${selectSelector} .v-list-item`;
+      await this.page.waitForSelector(optionSelector, { visible: true });
+
+      // First find all options
+      const options = await this.page.$$(optionSelector);
+      
+      // Then find the one with matching text
+      for (const option of options) {
+        const textContent = await this.page.evaluate(el => el.textContent, option);
+        if (textContent?.includes(text)) {
+          await option.click();
+          await delay(500);
+          return;
+        }
+      }
+
+      console.warn(`Option with text "${text}" not found in select ${selectSelector}`);
+    } catch (error) {
+      console.error(`Error in selectByTextSimple: ${error}`);
+    }
+  }
+}
+]]></content>
+          </file>
+        
+          <file>
+            <path>src/config.ts</path>
+            <content><![CDATA[// src/config.ts
+import * as fs from 'fs';
+import * as path from 'path';
+import * as TOML from 'toml';
+import { DemoConfig } from './recorder/types';
+
+export function getConfigPath(targetDir: string): string {
+  return path.join(targetDir, '.demo-recorder.toml');
+}
+
+export function getExampleConfigPath(): string {
+  return path.join(__dirname, '..', 'example-config.toml');
+}
+
+export function createConfigFile(configPath: string): void {
+  const exampleConfigPath = getExampleConfigPath();
+  
+  if (!fs.existsSync(exampleConfigPath)) {
+    throw new Error('Example config file not found. Please ensure example-config.toml exists in the project root.');
+  }
+
+  // Copy the example config
+  fs.copyFileSync(exampleConfigPath, configPath);
+  console.log(`Created new config file at ${configPath}`);
+  console.log('Please customize the config file for your specific needs.');
+}
+
+export function readConfig(configPath: string): DemoConfig {
+  try {
+    const content = fs.readFileSync(configPath, 'utf-8');
+    return TOML.parse(content) as DemoConfig;
+  } catch (error) {
+    console.error(`Error reading config at ${configPath}:`, error);
+    throw error;
+  }
+}
+
+export function ensureConfigExists(targetDir: string): string {
+  const configPath = getConfigPath(targetDir);
+  if (!fs.existsSync(configPath)) {
+    createConfigFile(configPath);
+  }
+  return configPath;
+}
+
+export function initializeConfig(targetDir: string): DemoConfig {
+  const configPath = ensureConfigExists(targetDir);
+  return readConfig(configPath);
+}
+]]></content>
+          </file>
+        
+          <file>
+            <path>src/index.ts</path>
+            <content><![CDATA[// src/index.ts
+import * as path from 'path';
+import * as fs from 'fs';
+import { initializeConfig } from './config';
+import { DemoRecorder } from './recorder/CustomScreenRecorder';
+
+// Get command line arguments
+const args = process.argv.slice(2);
+const targetDir = path.resolve(args[0] || process.cwd());
+
+async function main() {
+  try {
+    // Verify target directory exists
+    if (!fs.existsSync(targetDir)) {
+      console.error(`Error: Target directory does not exist: ${targetDir}`);
+      process.exit(1);
+    }
+
+    console.log(`Starting demo recorder for directory: ${targetDir}`);
+
+    // This will create the config file if it doesn't exist
+    const config = initializeConfig(targetDir);
+
+    // Create output directory if specified in config
+    const outputDir = path.dirname(path.join(targetDir, config.recording.output));
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    // Initialize and run recorder
+    const recorder = new DemoRecorder(config);
+    await recorder.record();
+
+  } catch (error) {
+    console.error('Recording failed:', error);
+    process.exit(1);
+  }
+}
+
+// Run the main function
+main().catch((error) => {
+  console.error('Unexpected error:', error);
+  process.exit(1);
+});
+]]></content>
+          </file>
+        
+          <file>
+            <path>src/recorder/CustomScreenRecorder.ts</path>
+            <content><![CDATA[// src/recorder/CustomScreenRecorder.ts
+import * as puppeteer from 'puppeteer';
+import { spawn } from 'child_process';
+import { MouseActions } from '../actions/MouseActions';
+import { InputActions } from '../actions/InputActions';
+import { SelectActions } from '../actions/SelectActions';
+import { delay } from '../utils/delay';
+import { DemoConfig, RecordingOptions } from './types';
+
+export class CustomScreenRecorder {
+  private ffmpeg: any;
+  private frameCount: number = 0;
+  private client: puppeteer.CDPSession | null = null;
+
+  constructor(
+    private page: puppeteer.Page,
+    private options: RecordingOptions = {
+      fps: 30,
+      quality: 90,
+      videoCrf: 18,
+      videoCodec: 'libx264',
+      videoPreset: 'ultrafast'
+    }
+  ) {}
+
+  async start(outputPath: string): Promise<void> {
+    this.client = await this.page.createCDPSession();
+
+    this.ffmpeg = spawn('ffmpeg', [
+      '-y',
+      '-f', 'image2pipe',
+      '-r', `${this.options.fps}`,
+      '-i', '-',
+      '-c:v', this.options.videoCodec,
+      '-preset', this.options.videoPreset,
+      '-crf', `${this.options.videoCrf}`,
+      '-pix_fmt', 'yuv420p',
+      outputPath
+    ]);
+
+    this.ffmpeg.stderr.on('data', (data: Buffer) => {
+      console.log(`FFmpeg: ${data.toString()}`);
+    });
+
+    await this.client.send('Page.startScreencast', {
+      format: 'jpeg',
+      quality: this.options.quality,
+      everyNthFrame: 1
+    });
+
+    await this.client.on('Page.screencastFrame', async (frame) => {
+      try {
+        if (!this.client) return;
+        
+        this.ffmpeg.stdin.write(Buffer.from(frame.data, 'base64'));
+        this.frameCount++;
+        
+        await this.client.send('Page.screencastFrameAck', {
+          sessionId: frame.sessionId
+        }).catch(console.error);
+      } catch (error) {
+        console.error('Error processing frame:', error);
+      }
+    });
+  }
+
+  async stop(): Promise<void> {
+    if (this.client) {
+      try {
+        await this.client.send('Page.stopScreencast');
+        this.ffmpeg.stdin.end();
+        
+        await new Promise<void>((resolve, reject) => {
+          this.ffmpeg.on('close', (code: number) => {
+            if (code === 0) {
+              console.log(`Recording completed with ${this.frameCount} frames`);
+              resolve();
+            } else {
+              reject(new Error(`FFmpeg exited with code ${code}`));
+            }
+          });
+        });
+
+        await this.client.detach();
+        this.client = null;
+      } catch (error) {
+        console.error('Error stopping recording:', error);
+        throw error;
+      }
+    }
+  }
+}
+
+export class DemoRecorder {
+  private browser?: puppeteer.Browser;
+  private page?: puppeteer.Page;
+  private recorder?: CustomScreenRecorder;
+  private mouseActions?: MouseActions;
+  private inputActions?: InputActions;
+  private selectActions?: SelectActions;
+
+  constructor(private config: DemoConfig) {}
+
+  async initialize() {
+    this.browser = await puppeteer.launch({
+      headless: false,
+      defaultViewport: this.config.project.viewport
+    });
+
+    this.page = await this.browser.newPage();
+    await this.initializeMouseHelper();
+    
+    this.recorder = new CustomScreenRecorder(this.page);
+    this.mouseActions = new MouseActions(this.page);
+    this.inputActions = new InputActions(this.page);
+    this.selectActions = new SelectActions(this.page);
+  }
+
+  private async initializeMouseHelper() {
+    if (!this.page) throw new Error('Page not initialized');
+
+    await this.page.evaluateOnNewDocument(`
+      window.self = window;
+      if (document.readyState === 'complete') {
+        window['mouse-helper']();
+      } else {
+        document.addEventListener('DOMContentLoaded', () => {
+          window['mouse-helper']();
+        });
+      }
+    `);
+  }
+
+  async executeStep(step: any) {
+    if (!this.page || !this.mouseActions || !this.inputActions || !this.selectActions) {
+      throw new Error('Recorder not properly initialized');
+    }
+
+    switch (step.type) {
+      case 'navigate':
+        await this.page.goto(`${this.config.project.baseUrl}${step.path}`, {
+          waitUntil: ['networkidle0', 'load']
+        });
+        break;
+
+      case 'input':
+        await this.inputActions.typeText(step.selector!, step.value!, {
+          isTextarea: step.selector?.includes('textarea')
+        });
+        break;
+
+      case 'select':
+        await this.selectActions.select(step.selector!, step.option!);
+        break;
+
+      case 'click':
+        await this.mouseActions.click(step.selector!);
+        break;
+
+      case 'wait':
+        await delay(step.duration || 1000);
+        break;
+
+      default:
+        console.warn(`Unknown step type: ${step.type}`);
+    }
+  }
+
+  async record() {
+    try {
+      await this.initialize();
+      if (!this.page || !this.recorder) throw new Error('Failed to initialize');
+
+      console.log('Starting recording...');
+      await this.recorder.start(this.config.recording.output);
+
+      for (const step of this.config.steps) {
+        await this.executeStep(step);
+      }
+
+      console.log('Stopping recording...');
+      await this.recorder.stop();
+    } catch (error) {
+      console.error('Recording error:', error);
+      throw error;
+    } finally {
+      if (this.browser) {
+        await this.browser.close();
+      }
+    }
+  }
+}
+]]></content>
+          </file>
+        
+          <file>
+            <path>src/recorder/types.ts</path>
+            <content><![CDATA[// src/recorder/types.ts
+
+export interface ViewportDimensions {
+  width: number;
+  height: number;
+}
+
+export interface RecordingOptions {
+  fps: number;
+  quality: number;
+  videoCrf: number;
+  videoCodec: string;
+  videoPreset: string;
+}
+
+export interface Step {
+  type: 'navigate' | 'input' | 'select' | 'click' | 'wait';
+  selector?: string;
+  value?: string;
+  option?: string;
+  duration?: number;
+  path?: string;
+}
+
+export interface ProjectConfig {
+  name: string;
+  baseUrl: string;
+  viewport: ViewportDimensions;
+}
+
+export interface AuthConfig {
+  email?: string;
+  password?: string;
+}
+
+export interface RecordingConfig {
+  output: string;
+  fps: number;
+  quality: number;
+}
+
+export interface DemoConfig {
+  project: ProjectConfig;
+  auth?: AuthConfig;
+  recording: RecordingConfig;
+  steps: Step[];
+}
+]]></content>
+          </file>
+        
+          <file>
+            <path>src/utils/browser.ts</path>
+            <content><![CDATA[// src/utils/browser.ts
+import * as puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+interface BrowserOptions {
+  headless?: boolean;
+  viewport?: {
+    width: number;
+    height: number;
+  };
+  userDataDir?: string;
+}
+
+/**
+ * Initializes a Puppeteer browser with the specified options
+ */
+export async function initializeBrowser(options: BrowserOptions = {}) {
+  const defaultOptions: BrowserOptions = {
+    headless: false,
+    viewport: {
+      width: 1280,
+      height: 800
+    }
+  };
+
+  const mergedOptions = { ...defaultOptions, ...options };
+
+  try {
+    const browser = await puppeteer.launch({
+      headless: mergedOptions.headless,
+      defaultViewport: mergedOptions.viewport,
+      userDataDir: mergedOptions.userDataDir,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu'
+      ]
+    });
+
+    return browser;
+  } catch (error) {
+    console.error('Failed to initialize browser:', error);
+    throw error;
+  }
+}
+
+/**
+ * Injects mouse helper script into the page for visualizing cursor movements
+ */
+export async function injectMouseHelper(page: puppeteer.Page) {
+  try {
+    // Get the path to the mouse-helper script
+    const mouseHelperPath = require.resolve('mouse-helper/dist/mouse-helper.js');
+    const mouseHelperContent = fs.readFileSync(mouseHelperPath, 'utf8');
+
+    // Inject the mouse-helper script
+    await page.evaluateOnNewDocument(`
+      window.self = window;
+      ${mouseHelperContent}
+      if (document.readyState === 'complete') {
+        window['mouse-helper']();
+      } else {
+        document.addEventListener('DOMContentLoaded', () => {
+          window['mouse-helper']();
+        });
+      }
+    `);
+
+    // Also inject it immediately in case we're after DOM ready
+    await page.evaluate(`
+      window.self = window;
+      if (typeof window['mouse-helper'] === 'function') {
+        window['mouse-helper']();
+      }
+    `);
+  } catch (error) {
+    console.error('Failed to inject mouse helper:', error);
+    throw error;
+  }
+}
+
+/**
+ * Ensures the output directory exists for video recordings
+ */
+export async function ensureOutputDirectory(outputPath: string) {
+  try {
+    const dir = path.dirname(outputPath);
+    await fs.promises.mkdir(dir, { recursive: true });
+    return dir;
+  } catch (error) {
+    console.error('Failed to create output directory:', error);
+    throw error;
+  }
+}
+
+/**
+ * Waits for network to be idle and page to be fully loaded
+ */
+export async function waitForPageLoad(page: puppeteer.Page, timeout = 30000) {
+  try {
+    await Promise.all([
+      page.waitForNavigation({ 
+        waitUntil: ['networkidle0', 'load', 'domcontentloaded'],
+        timeout 
+      }),
+      page.waitForFunction(
+        'document.readyState === "complete"',
+        { timeout }
+      )
+    ]);
+  } catch (error) {
+    console.warn('Page load timeout or error:', error);
+    // Don't throw - sometimes pages are usable before everything is fully loaded
+  }
+}
+
+/**
+ * Checks if an element is visible and clickable
+ */
+export async function isElementClickable(page: puppeteer.Page, selector: string): Promise<boolean> {
+  try {
+    const element = await page.$(selector);
+    if (!element) return false;
+
+    const isVisible = await page.evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return style && 
+             style.display !== 'none' && 
+             style.visibility !== 'hidden' && 
+             style.opacity !== '0';
+    }, element);
+
+    if (!isVisible) return false;
+
+    const box = await element.boundingBox();
+    return box !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Safely closes a browser instance
+ */
+export async function closeBrowser(browser: puppeteer.Browser | undefined) {
+  try {
+    if (browser) {
+      const pages = await browser.pages();
+      await Promise.all(pages.map(page => page.close()));
+      await browser.close();
+    }
+  } catch (error) {
+    console.error('Error closing browser:', error);
+    // Don't throw - this is cleanup code
+  }
+}
+]]></content>
+          </file>
+        
+          <file>
+            <path>src/utils/delay.ts</path>
+            <content><![CDATA[]]></content>
+          </file>
+        
+          <file>
+            <path>tsconfig.json</path>
+            <content><![CDATA[{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020", "DOM"],
+    "outDir": "dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "**/*.test.ts"]
+}
+]]></content>
+          </file>
+        
+  </fileContents>
+</projectContext>
