@@ -17,41 +17,110 @@ export interface MouseMoveOptions {
   shouldClick?: boolean;
 }
 
+// Make MouseActions a singleton to ensure position state is maintained
 export class MouseActions {
+  private static instance: MouseActions | null = null;
   private isMoving: boolean = false;
+  private lastKnownPosition: { x: number, y: number } = { x: 0, y: 0 };
+  private scrollOffset: number = 0;
   
-  constructor(private page: Page) {
+  private constructor(private page: Page) {
+    console.log('MouseActions initialized with position:', this.lastKnownPosition);
     // Initialize mouse helper
     MouseHelper.getInstance().ensureInitialized(page).catch(error => {
       console.warn('Failed to initialize mouse helper:', error);
     });
   }
 
+  static getInstance(page: Page): MouseActions {
+    if (!MouseActions.instance) {
+      MouseActions.instance = new MouseActions(page);
+    }
+    return MouseActions.instance;
+  }
+
+  private async moveTo(targetX: number, targetY: number, options: MouseMoveOptions = {}): Promise<void> {
+    const {
+        minSteps = 10,
+        maxSteps = 20,
+        minDelay = 5,
+        maxDelay = 15,
+    } = options;
+  
+    console.log('Starting mouse movement:');
+    console.log('Current stored position:', this.lastKnownPosition);
+    console.log('Current scroll offset:', this.scrollOffset);
+    console.log('Target position:', { x: targetX, y: targetY });
+  
+    const distance = Math.sqrt(
+      Math.pow(targetX - this.lastKnownPosition.x, 2) + 
+      Math.pow(targetY - this.lastKnownPosition.y, 2)
+    );
+    const steps = Math.min(maxSteps, Math.max(minSteps, Math.floor(distance / 5)));
+  
+    const stepX = (targetX - this.lastKnownPosition.x) / steps;
+    const stepY = (targetY - this.lastKnownPosition.y) / steps;
+
+    let currentX = this.lastKnownPosition.x;
+    let currentY = this.lastKnownPosition.y;
+  
+    for (let i = 0; i < steps; i++) {
+        currentX += stepX;
+        currentY += stepY;
+  
+        console.log(`Step ${i + 1}/${steps}:`, { currentX, currentY });
+        await this.page.mouse.move(currentX, currentY);
+        this.lastKnownPosition = { x: currentX, y: currentY };
+        
+        const stepDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        await delay(stepDelay);
+    }
+    
+    // Ensure we end up exactly at the target
+    await this.page.mouse.move(targetX, targetY);
+    this.lastKnownPosition = { x: targetX, y: targetY };
+    console.log('Final position stored as:', this.lastKnownPosition);
+  }
+
   async click(selector: string): Promise<boolean> {
     if (this.isMoving) {
+      console.log('Already moving, waiting 100ms');
       await delay(100);
     }
     
     try {
       this.isMoving = true;
+      console.log(`Attempting to click selector: ${selector}`);
+      console.log('Current stored position:', this.lastKnownPosition);
       
       // Wait for element to be ready
       const element = await this.page.waitForSelector(selector, { visible: true });
-      if (!element) return false;
+      if (!element) {
+        console.log('Element not found');
+        return false;
+      }
 
       // Get element position
       const box = await element.boundingBox();
-      if (!box) return false;
+      if (!box) {
+        console.log('Could not get element bounding box');
+        return false;
+      }
 
-      // Simple direct movement to target
       const targetX = box.x + box.width / 2;
       const targetY = box.y + box.height / 2;
+
+      console.log('Element bounding box:', box);
+      console.log('Beginning movement to element center:', { targetX, targetY });
       
-      // Move and click in one operation
-      await this.page.mouse.move(targetX, targetY);
+      // Move with steps
+      await this.moveTo(targetX, targetY);
+      
+      console.log('Performing click action');
       await this.page.mouse.down();
       await delay(50);
       await this.page.mouse.up();
+      console.log('Click completed');
       
       return true;
     } catch (error) {
@@ -64,13 +133,18 @@ export class MouseActions {
 
   async smoothScroll(pixels: number, duration: number = 1000): Promise<void> {
     if (this.isMoving) {
+      console.log('Already moving, waiting 100ms before scroll');
       await delay(100);
     }
     
     try {
       this.isMoving = true;
+      console.log(`Starting smooth scroll: ${pixels}px over ${duration}ms`);
       const steps = Math.floor(duration / 16);
       const pixelsPerStep = pixels / steps;
+      
+      // Track scroll offset, but don't adjust mouse position
+      this.scrollOffset += pixels;
       
       for (let i = 0; i < steps; i++) {
         await this.page.evaluate((y) => {
@@ -78,6 +152,8 @@ export class MouseActions {
         }, pixelsPerStep);
         await delay(16);
       }
+      
+      console.log('Scroll completed. New offset:', this.scrollOffset);
     } finally {
       this.isMoving = false;
     }

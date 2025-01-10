@@ -7,7 +7,7 @@ export class SelectActions {
   private mouseActions: MouseActions;
 
   constructor(private page: Page) {
-    this.mouseActions = new MouseActions(page);
+    this.mouseActions = MouseActions.getInstance(page);
   }
 
   async select(selectSelector: string, optionSelector: string) {

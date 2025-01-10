@@ -98,7 +98,7 @@ export class InputActions {
   private mouseActions: MouseActions;
 
   constructor(private page: Page) {
-    this.mouseActions = new MouseActions(page);
+    this.mouseActions = MouseActions.getInstance(page);
   }
 
   async typeText(selector: string, text: string, options: TypeOptions = {}) {
@@ -107,25 +107,23 @@ export class InputActions {
       isTextarea = false 
     } = options;
 
-    // Use mouse movement for more natural interaction
     const targetSelector = isTextarea ? `${selector} textarea` : selector;
+    
+    // Click first
     await this.mouseActions.click(targetSelector);
     
-    // Ensure element is focused
-    await this.page.focus(targetSelector);
+    // Small delay before typing
+    await delay(50);
     
-    // Type with delay for natural appearance
+    // Type the text
     await this.page.type(targetSelector, text, { delay: typeDelay });
-    
-    // Small pause after typing
-    await delay(500);
   }
 
   async clearAndType(selector: string, text: string, options: TypeOptions = {}) {
     const targetSelector = options.isTextarea ? `${selector} textarea` : selector;
     
     await this.mouseActions.click(targetSelector);
-    await this.page.focus(targetSelector);
+    await delay(50);
     
     // Clear existing content
     await this.page.keyboard.down('Control');
@@ -134,7 +132,7 @@ export class InputActions {
     await this.page.keyboard.press('Backspace');
     
     // Type new content
-    await this.typeText(selector, text, options);
+    await this.page.type(targetSelector, text, { delay: options.delay });
   }
 }
 ]]></content>
@@ -161,235 +159,229 @@ export interface MouseMoveOptions {
   shouldClick?: boolean;
 }
 
+// Make MouseActions a singleton to ensure position state is maintained
 export class MouseActions {
-  private currentX: number = 0;
-  private currentY: number = 0;
+  private static instance: MouseActions | null = null;
   private isMoving: boolean = false;
-  private isInitialized: boolean = false;
-  private isRestoringPosition: boolean = false;
-  private readonly defaultPosition: { x: number, y: number };
-  private lastKnownGoodPosition: { x: number, y: number } | null = null;
-  private positionRestoreTimeout: NodeJS.Timeout | null = null;
-  private lastRestoreTime: number = 0;
-  private readonly RESTORE_DEBOUNCE = 100; // ms
-
-  constructor(private page: Page) {
-    const viewport = page.viewport();
-    this.defaultPosition = {
-      x: viewport ? viewport.width / 2 : 640,
-      y: viewport ? viewport.height / 2 : 400
-    };
-    this.currentX = this.defaultPosition.x;
-    this.currentY = this.defaultPosition.y;
-    this.lastKnownGoodPosition = { ...this.defaultPosition };
-
-    // Handle navigation with proper debouncing
-    page.on('framenavigated', async (frame) => {
-      if (frame === page.mainFrame()) {
-        // Clear any pending restoration
-        if (this.positionRestoreTimeout) {
-          clearTimeout(this.positionRestoreTimeout);
-        }
-
-        // Wait for page to stabilize before restoring position
-        this.positionRestoreTimeout = setTimeout(async () => {
-          if (Date.now() - this.lastRestoreTime >= this.RESTORE_DEBOUNCE) {
-            await this.debouncedRestorePosition();
-          }
-        }, this.RESTORE_DEBOUNCE);
-      }
+  private lastKnownPosition: { x: number, y: number } = { x: 0, y: 0 };
+  private scrollOffset: number = 0;
+  
+  private constructor(private page: Page) {
+    console.log('MouseActions initialized with position:', this.lastKnownPosition);
+    // Initialize mouse helper
+    MouseHelper.getInstance().ensureInitialized(page).catch(error => {
+      console.warn('Failed to initialize mouse helper:', error);
     });
   }
 
-  private async debouncedRestorePosition(): Promise<void> {
-    if (Date.now() - this.lastRestoreTime < this.RESTORE_DEBOUNCE || this.isMoving) {
-      return;
+  static getInstance(page: Page): MouseActions {
+    if (!MouseActions.instance) {
+      MouseActions.instance = new MouseActions(page);
     }
-
-    try {
-      const position = this.lastKnownGoodPosition || this.defaultPosition;
-      await this.page.mouse.move(position.x, position.y);
-      this.currentX = position.x;
-      this.currentY = position.y;
-      this.lastRestoreTime = Date.now();
-      console.log(`Position restored to: { x: ${position.x}, y: ${position.y} }`);
-    } catch (error) {
-      console.error('Error restoring position:', error);
-    }
+    return MouseActions.instance;
   }
 
-  private async waitForMovementComplete(): Promise<void> {
-    const startTime = Date.now();
-    while (this.isMoving && Date.now() - startTime < 1000) {
-      await delay(50);
-    }
-    // Force release if stuck
-    if (this.isMoving) {
-      console.warn('Movement lock timeout - forcing release');
-      this.isMoving = false;
-    }
-  }
+  private async moveTo(targetX: number, targetY: number, options: MouseMoveOptions = {}): Promise<void> {
+    const {
+        minSteps = 10,
+        maxSteps = 20,
+        minDelay = 5,
+        maxDelay = 15,
+    } = options;
+  
+    console.log('Starting mouse movement:');
+    console.log('Current stored position:', this.lastKnownPosition);
+    console.log('Current scroll offset:', this.scrollOffset);
+    console.log('Target position:', { x: targetX, y: targetY });
+  
+    const distance = Math.sqrt(
+      Math.pow(targetX - this.lastKnownPosition.x, 2) + 
+      Math.pow(targetY - this.lastKnownPosition.y, 2)
+    );
+    const steps = Math.min(maxSteps, Math.max(minSteps, Math.floor(distance / 5)));
+  
+    const stepX = (targetX - this.lastKnownPosition.x) / steps;
+    const stepY = (targetY - this.lastKnownPosition.y) / steps;
 
-  async ensureInitialized() {
-    if (!this.isInitialized) {
-      try {
-        await this.restorePosition();
-        this.isInitialized = true;
-        console.log(`Mouse position initialized to: ${this.currentX}, ${this.currentY}`);
-      } catch (error) {
-        console.warn('Failed to initialize mouse position:', error);
-        // Don't throw, use default position
-        await this.setMousePosition(this.defaultPosition.x, this.defaultPosition.y);
-      }
-    }
-  }
-
-  private async setMousePosition(x: number, y: number, skipLastKnownUpdate = false) {
-    // Don't update position if we're in the middle of a restore operation
-    if (Date.now() - this.lastRestoreTime < this.RESTORE_DEBOUNCE) {
-      return;
-    }
-
-    try {
-      await this.page.mouse.move(x, y);
-      this.currentX = x;
-      this.currentY = y;
-
-      // Only update last known good position for intentional movements
-      if (!skipLastKnownUpdate) {
-        this.lastKnownGoodPosition = { x, y };
-      }
-    } catch (error) {
-      console.error('Error setting mouse position:', error);
-    }
-  }
-
-  async moveWithDelay(selector: string, options: MouseMoveOptions = {}) {
-    if (this.isMoving) {
-      await this.waitForMovementComplete();
+    let currentX = this.lastKnownPosition.x;
+    let currentY = this.lastKnownPosition.y;
+  
+    for (let i = 0; i < steps; i++) {
+        currentX += stepX;
+        currentY += stepY;
+  
+        console.log(`Step ${i + 1}/${steps}:`, { currentX, currentY });
+        await this.page.mouse.move(currentX, currentY);
+        this.lastKnownPosition = { x: currentX, y: currentY };
+        
+        const stepDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        await delay(stepDelay);
     }
     
-    this.isMoving = true;
-    let succeeded = false;
-    let targetX = 0;
-    let targetY = 0;
+    // Ensure we end up exactly at the target
+    await this.page.mouse.move(targetX, targetY);
+    this.lastKnownPosition = { x: targetX, y: targetY };
+    console.log('Final position stored as:', this.lastKnownPosition);
+  }
 
+  async click(selector: string): Promise<boolean> {
+    if (this.isMoving) {
+      console.log('Already moving, waiting 100ms');
+      await delay(100);
+    }
+    
     try {
-      const element = await this.page.$(selector);
+      this.isMoving = true;
+      console.log(`Attempting to click selector: ${selector}`);
+      console.log('Current stored position:', this.lastKnownPosition);
+      
+      // Wait for element to be ready
+      const element = await this.page.waitForSelector(selector, { visible: true });
       if (!element) {
-        console.warn(`Element not found: ${selector}`);
+        console.log('Element not found');
         return false;
       }
 
+      // Get element position
       const box = await element.boundingBox();
       if (!box) {
-        console.warn(`Could not get bounding box for: ${selector}`);
+        console.log('Could not get element bounding box');
         return false;
       }
 
-      const startX = this.currentX;
-      const startY = this.currentY;
-      targetX = box.x + box.width / 2;
-      targetY = box.y + box.height / 2;
+      // Adjust the target position based on scroll
+      const targetX = box.x + box.width / 2;
+      const targetY = box.y + box.height / 2 ;
 
-      // Store current position before movement
-      this.lastKnownGoodPosition = { x: startX, y: startY };
-
-      // Use fixed number of steps for consistent speed
-      const steps = 30;
+      console.log('Element bounding box:', box);
+      console.log('Beginning movement to element center:', { targetX, targetY });
       
-      // Move in a straight line with fixed steps
-      for (let i = 0; i <= steps; i++) {
-        const progress = i / steps;
-        const x = startX + (targetX - startX) * progress;
-        const y = startY + (targetY - startY) * progress;
-
-        await this.setMousePosition(x, y);
-        await delay(10); // Fixed 10ms delay between steps
-      }
-
-      if (options.shouldClick) {
-        await this.page.mouse.down();
-        await delay(50 + Math.random() * 50);
-        await this.page.mouse.up();
-      }
-
-      succeeded = true;
+      // Move with steps
+      await this.moveTo(targetX, targetY);
+      
+      console.log('Performing click action');
+      await this.page.mouse.down();
+      await delay(50);
+      await this.page.mouse.up();
+      console.log('Click completed');
+      
       return true;
     } catch (error) {
-      console.error('Error during mouse movement:', error);
+      console.error('Click failed:', error);
       return false;
     } finally {
       this.isMoving = false;
-      if (succeeded) {
-        this.lastKnownGoodPosition = { x: targetX, y: targetY };
-      }
     }
   }
 
-  async click(selector: string) {
-    return this.moveWithDelay(selector, { shouldClick: true });
-  }
-
-  getPosition() {
-    return { x: this.currentX, y: this.currentY };
-  }
-
-
-
-  async restorePosition() {
-    if (this.isRestoringPosition || this.isMoving) {
-      return;
-    }
-
-    this.isRestoringPosition = true;
-    try {
-      const position = this.lastKnownGoodPosition || this.defaultPosition;
-      await this.page.mouse.move(position.x, position.y);
-      this.currentX = position.x;
-      this.currentY = position.y;
-    } finally {
-      this.isRestoringPosition = false;
-    }
-  }
-
-
-  async smoothScroll(pixels: number, duration: number = 1000) {
+  async smoothScroll(pixels: number, duration: number = 1000): Promise<void> {
     if (this.isMoving) {
-      await this.waitForMovementComplete();
+      console.log('Already moving, waiting 100ms before scroll');
+      await delay(100);
     }
-
-    this.isMoving = true;
-
+    
     try {
-      // Don't reinitialize here
-      const startY = this.currentY;
+      this.isMoving = true;
+      console.log(`Starting smooth scroll: ${pixels}px over ${duration}ms`);
       const steps = Math.floor(duration / 16);
       const pixelsPerStep = pixels / steps;
-      const stepDuration = duration / steps;
-
+      
+      // Track scroll offset, but don't adjust mouse position
+      this.scrollOffset += pixels;
+      
       for (let i = 0; i < steps; i++) {
         await this.page.evaluate((y) => {
           window.scrollBy(0, y);
         }, pixelsPerStep);
-
-        await delay(stepDuration);
+        await delay(16);
       }
-
-      // Update position after scroll
-      this.lastKnownGoodPosition = {
-        x: this.currentX,
-        y: this.currentY + pixels
-      };
+      
+      console.log('Scroll completed. New offset:', this.scrollOffset);
     } finally {
       this.isMoving = false;
     }
   }
-}
+}]]></content>
+          </file>
+        
+          <file>
+            <path>src/actions/SelectActions.ts</path>
+            <content><![CDATA[// src/actions/SelectActions.ts
+import { Page, ElementHandle } from 'puppeteer';
+import { MouseActions } from './MouseActions';
+import { delay } from '../utils/delay';
 
-export async function initializeMouseHelper(page: Page): Promise<void> {
-  const mouseHelper = MouseHelper.getInstance();
-  await mouseHelper.ensureInitialized(page);
+export class SelectActions {
+  private mouseActions: MouseActions;
+
+  constructor(private page: Page) {
+    this.mouseActions = MouseActions.getInstance(page);
+  }
+
+  async select(selectSelector: string, optionSelector: string) {
+    // Open the select
+    await this.mouseActions.click(selectSelector);
+    
+    // Wait for options to be visible
+    await delay(500);
+    
+    // Select the option
+    await this.mouseActions.click(optionSelector);
+    
+    // Wait for select to close
+    await delay(500);
+  }
+
+  async selectByText(selectSelector: string, text: string) {
+    await this.mouseActions.click(selectSelector);
+    await delay(500);
+
+    try {
+      // Use page.$ instead of evaluateHandle for proper typing
+      const options = await this.page.$$(`${selectSelector} .v-list-item`);
+      
+      for (const option of options) {
+        const textContent = await option.evaluate(el => el.textContent);
+        if (textContent?.includes(text)) {
+          await option.click();
+          await delay(500);
+          return;
+        }
+      }
+      
+      console.warn(`Option with text "${text}" not found in select ${selectSelector}`);
+    } catch (error) {
+      console.error(`Error selecting option: ${error}`);
+    }
+  }
+
+  async selectByTextSimple(selectSelector: string, text: string) {
+    try {
+      await this.mouseActions.click(selectSelector);
+      await delay(500);
+
+      // Use waitForSelector to ensure the list is visible
+      const optionSelector = `${selectSelector} .v-list-item`;
+      await this.page.waitForSelector(optionSelector, { visible: true });
+
+      // First find all options
+      const options = await this.page.$$(optionSelector);
+      
+      // Then find the one with matching text
+      for (const option of options) {
+        const textContent = await this.page.evaluate(el => el.textContent, option);
+        if (textContent?.includes(text)) {
+          await option.click();
+          await delay(500);
+          return;
+        }
+      }
+
+      console.warn(`Option with text "${text}" not found in select ${selectSelector}`);
+    } catch (error) {
+      console.error(`Error in selectByTextSimple: ${error}`);
+    }
+  }
 }
 ]]></content>
           </file>
@@ -622,7 +614,6 @@ import { InputActions } from '../actions/InputActions';
 import { SelectActions } from '../actions/SelectActions';
 import { delay } from '../utils/delay';
 import { DemoConfig, RecordingOptions } from './types';
-import { initializeMouseHelper } from '../actions/MouseActions';
 
 class CustomScreenRecorder {
   private ffmpeg: any;
@@ -769,9 +760,8 @@ class DemoRecorder {
     });
 
     this.page = await this.browser.newPage();
-    await initializeMouseHelper(this.page); 
 
-    this.mouseActions = new MouseActions(this.page);
+    this.mouseActions = MouseActions.getInstance(this.page);
     this.recorder = new CustomScreenRecorder(this.page);
     this.inputActions = new InputActions(this.page);
     this.selectActions = new SelectActions(this.page);
@@ -787,21 +777,12 @@ class DemoRecorder {
 
       switch (step.type) {
         case 'navigate':
-          const currentPosition = this.mouseActions.getPosition();
           console.log(`Navigating to: ${this.config.project.baseUrl}${step.path}`);
-
-          // Log position before navigation
-          console.log('Position before navigation:', currentPosition);
-
           await this.page.goto(`${this.config.project.baseUrl}${step.path}`, {
             waitUntil: ['networkidle0', 'load']
           });
-          // Restore mouse position after navigation
-          await delay(1000); // Give time for page to stabilize
-          await this.mouseActions.restorePosition();
-          // Log position after restore
-          const newPosition = this.mouseActions.getPosition();
-          console.log('Position after navigation restore:', newPosition);
+          // Give the page time to stabilize after navigation
+          await delay(500);
           break;
 
         case 'input':
@@ -971,6 +952,170 @@ export interface DemoConfig {
   auth?: AuthConfig;
   recording: RecordingConfig;
   steps: Step[];
+}
+]]></content>
+          </file>
+        
+          <file>
+            <path>src/utils/browser.ts</path>
+            <content><![CDATA[// src/utils/browser.ts
+import * as puppeteer from 'puppeteer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+interface BrowserOptions {
+  headless?: boolean;
+  viewport?: {
+    width: number;
+    height: number;
+  };
+  userDataDir?: string;
+}
+
+/**
+ * Initializes a Puppeteer browser with the specified options
+ */
+export async function initializeBrowser(options: BrowserOptions = {}) {
+  const defaultOptions: BrowserOptions = {
+    headless: false,
+    viewport: {
+      width: 1280,
+      height: 800
+    }
+  };
+
+  const mergedOptions = { ...defaultOptions, ...options };
+
+  try {
+    const browser = await puppeteer.launch({
+      headless: mergedOptions.headless,
+      defaultViewport: mergedOptions.viewport,
+      userDataDir: mergedOptions.userDataDir,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu'
+      ]
+    });
+
+    return browser;
+  } catch (error) {
+    console.error('Failed to initialize browser:', error);
+    throw error;
+  }
+}
+
+/**
+ * Injects mouse helper script into the page for visualizing cursor movements
+ */
+export async function injectMouseHelper(page: puppeteer.Page) {
+  try {
+    // Get the path to the mouse-helper script
+    const mouseHelperPath = require.resolve('mouse-helper/dist/mouse-helper.js');
+    const mouseHelperContent = fs.readFileSync(mouseHelperPath, 'utf8');
+
+    // Inject the mouse-helper script
+    await page.evaluateOnNewDocument(`
+      window.self = window;
+      ${mouseHelperContent}
+      if (document.readyState === 'complete') {
+        window['mouse-helper']();
+      } else {
+        document.addEventListener('DOMContentLoaded', () => {
+          window['mouse-helper']();
+        });
+      }
+    `);
+
+    // Also inject it immediately in case we're after DOM ready
+    await page.evaluate(`
+      window.self = window;
+      if (typeof window['mouse-helper'] === 'function') {
+        window['mouse-helper']();
+      }
+    `);
+  } catch (error) {
+    console.error('Failed to inject mouse helper:', error);
+    throw error;
+  }
+}
+
+/**
+ * Ensures the output directory exists for video recordings
+ */
+export async function ensureOutputDirectory(outputPath: string) {
+  try {
+    const dir = path.dirname(outputPath);
+    await fs.promises.mkdir(dir, { recursive: true });
+    return dir;
+  } catch (error) {
+    console.error('Failed to create output directory:', error);
+    throw error;
+  }
+}
+
+/**
+ * Waits for network to be idle and page to be fully loaded
+ */
+export async function waitForPageLoad(page: puppeteer.Page, timeout = 30000) {
+  try {
+    await Promise.all([
+      page.waitForNavigation({ 
+        waitUntil: ['networkidle0', 'load', 'domcontentloaded'],
+        timeout 
+      }),
+      page.waitForFunction(
+        'document.readyState === "complete"',
+        { timeout }
+      )
+    ]);
+  } catch (error) {
+    console.warn('Page load timeout or error:', error);
+    // Don't throw - sometimes pages are usable before everything is fully loaded
+  }
+}
+
+/**
+ * Checks if an element is visible and clickable
+ */
+export async function isElementClickable(page: puppeteer.Page, selector: string): Promise<boolean> {
+  try {
+    const element = await page.$(selector);
+    if (!element) return false;
+
+    const isVisible = await page.evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      return style && 
+             style.display !== 'none' && 
+             style.visibility !== 'hidden' && 
+             style.opacity !== '0';
+    }, element);
+
+    if (!isVisible) return false;
+
+    const box = await element.boundingBox();
+    return box !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Safely closes a browser instance
+ */
+export async function closeBrowser(browser: puppeteer.Browser | undefined) {
+  try {
+    if (browser) {
+      const pages = await browser.pages();
+      await Promise.all(pages.map(page => page.close()));
+      await browser.close();
+    }
+  } catch (error) {
+    console.error('Error closing browser:', error);
+    // Don't throw - this is cleanup code
+  }
 }
 ]]></content>
           </file>

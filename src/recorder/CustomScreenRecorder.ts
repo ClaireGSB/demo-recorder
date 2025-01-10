@@ -155,7 +155,7 @@ class DemoRecorder {
 
     this.page = await this.browser.newPage();
 
-    this.mouseActions = new MouseActions(this.page);
+    this.mouseActions = MouseActions.getInstance(this.page);
     this.recorder = new CustomScreenRecorder(this.page);
     this.inputActions = new InputActions(this.page);
     this.selectActions = new SelectActions(this.page);
