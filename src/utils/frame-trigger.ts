@@ -41,7 +41,7 @@ export class FrameTrigger {
   private page: Page | null = null;
   private targetFps: number = 60;
 
-  private constructor() {}
+  private constructor() { }
 
   static getInstance(): FrameTrigger {
     if (!FrameTrigger.instance) {
@@ -53,7 +53,7 @@ export class FrameTrigger {
   async initialize(page: Page, fps: number = 60): Promise<void> {
     this.targetFps = fps;
     this.page = page;
-    
+
     // Set up navigation listener
     page.on('framenavigated', async frame => {
       if (frame === page.mainFrame()) {
@@ -90,9 +90,9 @@ export class FrameTrigger {
             will-change: transform, opacity;
             z-index: 2147483647;
           `;
-          
+
           // Position each trigger in a different corner
-          switch(id) {
+          switch (id) {
             case 'top-left':
               trigger.style.top = '0px';
               trigger.style.left = '0px';
@@ -110,7 +110,7 @@ export class FrameTrigger {
               trigger.style.right = '0px';
               break;
           }
-          
+
           document.body.appendChild(trigger);
           return trigger;
         };
@@ -129,23 +129,23 @@ export class FrameTrigger {
         const animate = () => {
           const now = performance.now();
           const delta = now - lastFrame;
-          
+
           if (delta >= frameInterval) {
             lastFrame = now - (delta % frameInterval);
-            
+
             // Get current time in seconds
             const time = now / 1000;
-          
+
             // Different animation patterns for each trigger
             triggers.topLeft.style.opacity = (Math.sin(time) * 0.004 + 0.01).toString();
             triggers.topLeft.style.transform = `translateZ(0) scale(${0.99 + Math.sin(time) * 0.01})`;
-            
+
             triggers.topRight.style.opacity = (Math.cos(time * 1.5) * 0.004 + 0.01).toString();
             triggers.topRight.style.transform = `translateZ(0) rotate(${Math.sin(time) * 0.5}deg)`;
-            
+
             triggers.bottomLeft.style.opacity = (Math.sin(time * 2) * 0.004 + 0.01).toString();
             triggers.bottomLeft.style.transform = `translateZ(0) translate(${Math.cos(time) * 0.5}px, 0)`;
-            
+
             triggers.bottomRight.style.opacity = (Math.cos(time * 2.5) * 0.004 + 0.01).toString();
             triggers.bottomRight.style.transform = `translateZ(0) skew(${Math.sin(time) * 0.2}deg)`;
           }

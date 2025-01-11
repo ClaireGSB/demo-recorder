@@ -39,42 +39,6 @@ export class MouseActions {
     return MouseActions.instance;
   }
 
-  // async subtleMove(duration: number): Promise<void> {
-  //   if (this.isMoving) {
-  //     await delay(10);
-  //   }
-  
-  //   try {
-  //     this.isMoving = true;
-  //     const startTime = Date.now();
-      
-  //     while (Date.now() - startTime < duration) {
-  //       const currentX = this.lastKnownPosition.x;
-  //       const currentY = this.lastKnownPosition.y;
-        
-  //       // First movement
-  //       const time = (Date.now() - startTime) / 50;
-  //       const radius = 4;
-  //       let targetX = currentX + radius * Math.cos(time);
-  //       let targetY = currentY + radius * Math.sin(2 * time);
-        
-  //       await this.page.mouse.move(targetX, targetY);
-  //       this.lastKnownPosition = { x: targetX, y: targetY };
-  
-  //       // Second movement in a perpendicular pattern
-  //       targetX = currentX + radius * Math.sin(time);
-  //       targetY = currentY + radius * Math.cos(2 * time);
-        
-  //       await this.page.mouse.move(targetX, targetY);
-  //       this.lastKnownPosition = { x: targetX, y: targetY };
-  
-  //       await delay(5);  // Keep our successful delay
-  //     }
-  //   } finally {
-  //     this.isMoving = false;
-  //   }
-  // }
-
   async moveTo(targetX: number, targetY: number, options: MouseMoveOptions = {}): Promise<void> {
     const {
       minSteps = 35,  // Increased for smoother movement

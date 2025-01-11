@@ -4,12 +4,8 @@ import * as puppeteer from 'puppeteer';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
-import {
-  DEFAULT_RECORDING_SETTINGS,
-  DEFAULT_SCREENCAST_OPTIONS,
-} from '../config/RecorderConfig';
+import { DEFAULT_SCREENCAST_OPTIONS } from '../config/RecorderConfig';
 import { createFFmpegArgs } from '../config/FFmpegConfig';
-
 import { FrameQueue } from '../queue/FrameQueue';
 import { QueueProcessor } from '../queue/QueueProcessor';
 import { MetricsCollector } from '../metrics/PerformanceMetrics';
@@ -81,16 +77,9 @@ export class ScreenRecorder {
     this.isPaused = false;
     await FrameTrigger.getInstance().initialize(this.page, this.options.fps);
 
-    // Calculate everyNthFrame based on target fps
-  // const screencastOptions = {
-  //   ...DEFAULT_SCREENCAST_OPTIONS,
-  //   everyNthFrame: Math.max(1, Math.floor(60 / this.options.fps))
-  // };
-
     // Set initial segment path
     this.currentSegmentPath = path.join(this.tempDir, `segment-${Date.now()}.mp4`);
     MetricsLogger.logInfo(`Starting recording to segment: ${this.currentSegmentPath}`);
-
 
 
     // Initialize FFmpeg
@@ -192,23 +181,23 @@ export class ScreenRecorder {
       }
 
       // Cleanup temp files and .DS_Store
-      // if (fs.existsSync(this.tempDir)) {
-      //   const files = fs.readdirSync(this.tempDir);
-      //   for (const file of files) {
-      //     const filePath = path.join(this.tempDir, file);
-      //     if (fs.existsSync(filePath)) {
-      //       fs.unlinkSync(filePath);
-      //       MetricsLogger.logInfo(`Deleted temp file: ${filePath}`);
-      //     }
-      //   }
+      if (fs.existsSync(this.tempDir)) {
+        const files = fs.readdirSync(this.tempDir);
+        for (const file of files) {
+          const filePath = path.join(this.tempDir, file);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            MetricsLogger.logInfo(`Deleted temp file: ${filePath}`);
+          }
+        }
 
-      //   try {
-      //     fs.rmdirSync(this.tempDir);
-      //     MetricsLogger.logInfo('Removed temp directory');
-      //   } catch (error) {
-      //     MetricsLogger.logWarning(`Note: Could not remove temp directory: ${(error as Error).message}`);
-      //   }
-      // }
+        try {
+          fs.rmdirSync(this.tempDir);
+          MetricsLogger.logInfo('Removed temp directory');
+        } catch (error) {
+          MetricsLogger.logWarning(`Note: Could not remove temp directory: ${(error as Error).message}`);
+        }
+      }
     } catch (error) {
       MetricsLogger.logError(error as Error, 'Segment processing');
       throw error;
@@ -301,16 +290,16 @@ export class ScreenRecorder {
         '-y',  // Overwrite output file if it exists
         outputPath
       ];
-  
+
       MetricsLogger.logInfo('FFmpeg copy command:');
       MetricsLogger.logInfo('ffmpeg ' + ffmpegArgs.join(' '));
-  
+
       const ffmpeg = spawn('ffmpeg', ffmpegArgs);
-  
+
       ffmpeg.stderr.on('data', (data) => {
         MetricsLogger.logInfo(`FFmpeg Copy: ${data.toString()}`);
       });
-  
+
       ffmpeg.on('close', (code) => {
         if (code === 0) {
           MetricsLogger.logInfo('Copy completed successfully');
@@ -319,14 +308,14 @@ export class ScreenRecorder {
           reject(new Error(`FFmpeg copy process exited with code ${code}`));
         }
       });
-  
+
       ffmpeg.on('error', (error) => {
         MetricsLogger.logError(error, 'FFmpeg copy process error');
         reject(error);
       });
     });
   }
-  
+
 
   private async concatenateSegments(segments: RecordingSegment[], outputPath: string): Promise<void> {
     // Ensure temp directory exists

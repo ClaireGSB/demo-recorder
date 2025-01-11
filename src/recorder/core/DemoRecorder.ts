@@ -78,28 +78,14 @@ export class DemoRecorder {
           break;
 
         case 'click':
-          console.log('clicking', step.selector);
           MetricsLogger.logInfo(`Clicking: ${step.selector}`);
           await this.mouseActions.click(step.selector!);
           break;
 
         case 'wait':
           MetricsLogger.logInfo(`Waiting: ${step.duration}ms`);
-
           await delay(step.duration || 1000);
           break;
-
-        // case 'wait':
-        //   MetricsLogger.logInfo(`Waiting: ${step.duration}ms`);
-        //   if (this.recorder?.getStatus().isRecording && !this.recorder?.getStatus().isPaused) {
-        //     console.log('Subtle move in wait step, timeestamp:', Date.now());
-        //     // Only do subtle moves if we're actually recording
-        //     await this.mouseActions?.subtleMove(step.duration || 1000);
-        //     console.log('Subtle move completed, timeestamp:', Date.now());
-        //   } else {
-        //     await delay(step.duration || 1000);
-        //   }
-        //   break;
 
         case 'scrollDown':
           MetricsLogger.logInfo(`Scrolling: ${step.pixels}px`);
