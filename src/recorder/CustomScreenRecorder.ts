@@ -8,6 +8,8 @@ import { InputActions } from '../actions/InputActions';
 import { SelectActions } from '../actions/SelectActions';
 import { delay } from '../utils/delay';
 import { DemoConfig, RecordingOptions } from './types';
+import { MouseHelper } from '../utils/mouse-helper';
+
 
 class CustomScreenRecorder {
   private ffmpeg: any;
@@ -20,10 +22,10 @@ class CustomScreenRecorder {
   private lastFrameTime: number = 0;
   private targetFrameInterval: number;
   private queueProcessor?: NodeJS.Timeout;
-  private frameTimings: number[] = [];
-  private queueSizeHistory: number[] = [];
-  private lastMetricsLog = Date.now();
-  private METRICS_INTERVAL = 5000; // Log every 5 seconds
+  // private frameTimings: number[] = [];
+  // private queueSizeHistory: number[] = [];
+  // private lastMetricsLog = Date.now();
+  // private METRICS_INTERVAL = 5000; // Log every 5 seconds
 
   public getStatus() {
     return {
@@ -61,6 +63,7 @@ class CustomScreenRecorder {
 
     this.ffmpeg = spawn('ffmpeg', [
       '-y',
+      '-use_wallclock_as_timestamps', '1',
       '-f', 'image2pipe',
       '-r', `${this.options.fps}`,
       '-i', '-',
@@ -95,7 +98,7 @@ class CustomScreenRecorder {
         const frameBuffer = Buffer.from(frame.data, 'base64');
 
         // Add to queue if we're not too far behind
-        if (this.frameQueue.length < 60) { // Maximum 1 second buffer at 30fps
+        if (this.frameQueue.length < 30) { // Maximum 2 second buffer at 30fps
           this.frameQueue.push({
             data: frameBuffer,
             timestamp: Date.now()
@@ -176,39 +179,24 @@ class CustomScreenRecorder {
 
   private async processFrameQueue() {
     if (!this.isRecording || this.isPaused || this.frameQueue.length === 0) {
-      return;
+        return;
     }
-  
-    const startTime = Date.now();
+
+    const startTime = Date.now(); // Capture start time
+
     const frame = this.frameQueue.shift();
     if (!frame) return;
-  
-    // Time since last frame, before processing
-    const now = Date.now();
-    const timeSinceLastFrame = now - this.lastFrameTime;
-    
+
     if (this.ffmpeg && this.ffmpeg.stdin.writable) {
-         // write the frame
-      this.ffmpeg.stdin.write(frame.data);
-      this.frameCount++;
-      // Update last frame before delay
-       this.lastFrameTime = Date.now();
-  
-  
-        // Collect metrics
-       this.frameTimings.push(Date.now() - startTime);
-       this.queueSizeHistory.push(this.frameQueue.length);
-        this.logPerformanceMetrics();
-  
-        if (this.frameCount % 30 === 0) { // Check every 30 frames
-         this.checkMemoryUsage();
-      }
+        this.ffmpeg.stdin.write(frame.data);
+        this.frameCount++;
+        this.lastFrameTime = Date.now();
     }
-  
-     if (timeSinceLastFrame < this.targetFrameInterval) {
-          await delay(this.targetFrameInterval - timeSinceLastFrame);
-    }
-  }
+
+    const processingTime = Date.now() - startTime;
+    const timeToWait = Math.max(0, this.targetFrameInterval - processingTime);
+    await delay(timeToWait);
+}
 
   private shouldProcessFrame(): boolean {
     // Process every Nth frame when under pressure
@@ -221,7 +209,7 @@ class CustomScreenRecorder {
   private startQueueProcessor() {
     this.queueProcessor = setInterval(() => {
       this.processFrameQueue().catch(console.error);
-    }, this.targetFrameInterval / 2);
+    }, this.targetFrameInterval);
   }
 
   private stopQueueProcessor() {
@@ -231,28 +219,28 @@ class CustomScreenRecorder {
     }
   }
 
-  private logPerformanceMetrics() {
-    const now = Date.now();
-    if (now - this.lastMetricsLog < this.METRICS_INTERVAL) return;
+  // private logPerformanceMetrics() {
+  //   const now = Date.now();
+  //   if (now - this.lastMetricsLog < this.METRICS_INTERVAL) return;
 
-    // Calculate frame timing statistics
-    const avgFrameTime = this.frameTimings.reduce((a, b) => a + b, 0) / this.frameTimings.length;
-    const maxFrameTime = Math.max(...this.frameTimings);
-    const avgQueueSize = this.queueSizeHistory.reduce((a, b) => a + b, 0) / this.queueSizeHistory.length;
+  //   // Calculate frame timing statistics
+  //   const avgFrameTime = this.frameTimings.reduce((a, b) => a + b, 0) / this.frameTimings.length;
+  //   const maxFrameTime = Math.max(...this.frameTimings);
+  //   const avgQueueSize = this.queueSizeHistory.reduce((a, b) => a + b, 0) / this.queueSizeHistory.length;
 
-    console.log('Recording Performance Metrics:');
-    console.log(`- Average frame processing time: ${avgFrameTime.toFixed(2)}ms`);
-    console.log(`- Max frame processing time: ${maxFrameTime.toFixed(2)}ms`);
-    console.log(`- Current queue size: ${this.frameQueue.length}`);
-    console.log(`- Average queue size: ${avgQueueSize.toFixed(2)}`);
-    console.log(`- Frames captured: ${this.frameCount}`);
-    console.log(`- Theoretical FPS: ${(1000 / avgFrameTime).toFixed(2)}`);
+  //   console.log('Recording Performance Metrics:');
+  //   console.log(`- Average frame processing time: ${avgFrameTime.toFixed(2)}ms`);
+  //   console.log(`- Max frame processing time: ${maxFrameTime.toFixed(2)}ms`);
+  //   console.log(`- Current queue size: ${this.frameQueue.length}`);
+  //   console.log(`- Average queue size: ${avgQueueSize.toFixed(2)}`);
+  //   console.log(`- Frames captured: ${this.frameCount}`);
+  //   console.log(`- Theoretical FPS: ${(1000 / avgFrameTime).toFixed(2)}`);
 
-    // Reset for next interval
-    this.frameTimings = [];
-    this.queueSizeHistory = [];
-    this.lastMetricsLog = now;
-  }
+  //   // Reset for next interval
+  //   this.frameTimings = [];
+  //   this.queueSizeHistory = [];
+  //   this.lastMetricsLog = now;
+  // }
 
   private async optimizeProcessPriority() {
     if (process.platform === 'darwin' || process.platform === 'linux') {
@@ -320,6 +308,10 @@ class DemoRecorder {
           await this.page.goto(`${this.config.project.baseUrl}${step.path}`, {
             waitUntil: ['networkidle0', 'load']
           });
+
+          // Reinitialize the mouse helper here
+          await MouseHelper.getInstance().reinitialize(this.page);
+
           // Give the page time to stabilize after navigation
           await delay(500);
           break;
