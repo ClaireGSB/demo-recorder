@@ -11,6 +11,15 @@ export interface RecordingOptions {
   videoCrf: number;
   videoCodec: string;
   videoPreset: string;
+  outputPath: string;
+}
+
+export interface RecordingSettings {
+  fps: number;
+  quality: number;
+  videoCrf: number;
+  videoCodec: string;
+  videoPreset: string;
 }
 
 export interface TypeConfig {
@@ -26,6 +35,7 @@ export interface Step {
   duration?: number;
   path?: string;
   typeConfig?: TypeConfig;
+  transition?: TransitionConfig; 
 }
 
 export type StepType =
@@ -39,6 +49,11 @@ export type StepType =
   | 'stopRecording'
   | 'pauseRecording'
   | 'resumeRecording';
+
+  export interface TransitionConfig {
+    type: 'fade' | 'dissolve';
+    duration: number;  // milliseconds
+  }
 
 export interface ScrollStep extends Step {
   type: 'scrollDown';
@@ -107,4 +122,14 @@ export interface FFmpegConfig {
   crf: number;
   pixelFormat: string;
   extraOptions?: string[];
+}
+
+export interface RecordingSegment {
+  path: string;
+  hasTransition: boolean;
+  transition?: TransitionConfig;
+  startTime: number;    // add these required properties
+  frameCount: number;   // from Segment interface
+  width: number;
+  height: number;
 }

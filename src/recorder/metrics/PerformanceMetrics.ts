@@ -43,6 +43,10 @@ export class MetricsCollector {
     };
   }
 
+  getTotalFrames(): number {
+    return this.frameCounter;
+  }
+  
   shouldLogMetrics(): boolean {
     const now = Date.now();
     if (now - this.lastMetricsLog >= this.METRICS_INTERVAL) {

@@ -2,14 +2,12 @@
 import { Segment } from '../segments/types';
 import { TransitionOptions, TransitionType } from './types';
 import { FadeTransition } from './FadeTransition';
-import { PixelizeTransition } from './PixelizeTransition';
 import { DissolveTransition } from './DissolveTransition';
 import { BaseTransition } from './BaseTransitions';
 
 export class TransitionManager {
   private transitions: Record<TransitionType, BaseTransition<any>> = {
     fade: new FadeTransition(),
-    pixelize: new PixelizeTransition(),
     dissolve: new DissolveTransition()
   };
 
