@@ -41,75 +41,87 @@ export class MouseActions {
 
   private async moveTo(targetX: number, targetY: number, options: MouseMoveOptions = {}): Promise<void> {
     const {
-        minSteps = 10,
-        maxSteps = 20,
+        minSteps = 25,  // Increased for smoother movement
+        maxSteps = 40,
         minDelay = 5,
         maxDelay = 15,
     } = options;
-
-    console.log('Movement Coordinate Debug:', {
-      startPosition: {
-          x: this.lastKnownPosition.x,
-          y: this.lastKnownPosition.y,
-          scrollOffset: this.scrollOffset
-      },
-      targetPosition: {
-          x: targetX,
-          y: targetY,
-          adjustedY: targetY - this.scrollOffset
-      },
-      viewport: await this.page.evaluate(() => ({
-          scrollY: window.scrollY,
-          clientHeight: window.innerHeight
-      }))
-  });
   
-    console.log('Starting mouse movement:');
-    console.log('Current stored position:', this.lastKnownPosition);
-    console.log('Current scroll offset:', this.scrollOffset);
-    console.log('Target position:', { x: targetX, y: targetY });
-    
-  
+    // Calculate total distance
     const distance = Math.sqrt(
-      Math.pow(targetX - this.lastKnownPosition.x, 2) + 
-      Math.pow(targetY - this.lastKnownPosition.y, 2)
+        Math.pow(targetX - this.lastKnownPosition.x, 2) + 
+        Math.pow(targetY - this.lastKnownPosition.y, 2)
     );
-    const steps = Math.min(maxSteps, Math.max(minSteps, Math.floor(distance / 5)));
   
-    const stepX = (targetX - this.lastKnownPosition.x) / steps;
-    const stepY = (targetY - this.lastKnownPosition.y) / steps;
-
-    let currentX = this.lastKnownPosition.x;
-    let currentY = this.lastKnownPosition.y;
-  
-    for (let i = 0; i < steps; i++) {
-        currentX += stepX;
-        currentY += stepY;
-  
-        console.log(`Step ${i + 1}/${steps}:`, { currentX, currentY });
-        await this.page.mouse.move(currentX, currentY);
-        this.lastKnownPosition = { x: currentX, y: currentY };
-        
-        const stepDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-        await delay(stepDelay);
-    }
+    // Calculate steps based on distance, but ensure smooth movement
+    const steps = Math.min(maxSteps, Math.max(minSteps, Math.floor(distance / 10)));
     
-    // Ensure we end up exactly at the target
+    // Bezier curve control points
+    const p0 = { x: this.lastKnownPosition.x, y: this.lastKnownPosition.y }; // start
+    const p3 = { x: targetX, y: targetY }; // end
+    
+    // Create control points for smooth curve
+    // Randomize control points slightly for more natural movement
+    const randomizeOffset = () => (Math.random() - 0.5) * distance * 0.2;
+    
+    const p1 = {
+        x: p0.x + (p3.x - p0.x) * 0.4 + randomizeOffset(),
+        y: p0.y + (p3.y - p0.y) * 0.2 + randomizeOffset()
+    };
+    
+    const p2 = {
+        x: p0.x + (p3.x - p0.x) * 0.6 + randomizeOffset(),
+        y: p3.y + (p0.y - p3.y) * 0.2 + randomizeOffset()
+    };
+  
+    // Cubic bezier function
+    const bezier = (t: number) => {
+        const oneMinusT = 1 - t;
+        const oneMinusTSquared = oneMinusT * oneMinusT;
+        const oneMinusTCubed = oneMinusTSquared * oneMinusT;
+        const tSquared = t * t;
+        const tCubed = tSquared * t;
+  
+        return {
+            x: oneMinusTCubed * p0.x +
+               3 * oneMinusTSquared * t * p1.x +
+               3 * oneMinusT * tSquared * p2.x +
+               tCubed * p3.x,
+            y: oneMinusTCubed * p0.y +
+               3 * oneMinusTSquared * t * p1.y +
+               3 * oneMinusT * tSquared * p2.y +
+               tCubed * p3.y
+        };
+    };
+  
+    // Easing function for acceleration/deceleration
+    const easeInOutQuad = (t: number) => {
+        return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    };
+  
+    // Perform the movement
+    console.log('Beginning movement to:', { targetX, targetY });
+    for (let step = 0; step <= steps; step++) {
+      console.log('Step:', step);
+      console.log('Current position:', this.lastKnownPosition);
+        const t = easeInOutQuad(step / steps); // Apply easing
+        const point = bezier(t);
+        
+        await this.page.mouse.move(point.x, point.y);
+        this.lastKnownPosition = { x: point.x, y: point.y };
+  
+        // Variable delay based on acceleration curve
+        const progress = step / steps;
+        const speedFactor = 1 - Math.abs(2 * progress - 1); // Slower at start/end
+        const delay = minDelay + (maxDelay - minDelay) * speedFactor;
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  
+    // Ensure we end exactly at target
     await this.page.mouse.move(targetX, targetY);
     this.lastKnownPosition = { x: targetX, y: targetY };
-    console.log('Final position stored as:', this.lastKnownPosition);
-
-    const helperPosition = await this.page.evaluate(() => {
-      const helper = document.querySelector('.mouse-helper');
-      if (!helper) return null;
-      const rect = helper.getBoundingClientRect();
-      return {
-        visual: { top: rect.top, left: rect.left },
-        style: helper.getAttribute('style'),
-        scroll: window.scrollY
-      };
-    });
-    console.log('Mouse Helper State:', helperPosition);
+    console.log('Movement completed; final position:', this.lastKnownPosition);
   }
 
   async click(selector: string): Promise<boolean> {
