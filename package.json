@@ -7,7 +7,8 @@
     "init": "ts-node src/index.ts init",
     "record": "ts-node src/index.ts record",
     "start": "ts-node src/index.ts",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "test:transition": "ts-node src/tests/transition-test.ts"
   },
   "keywords": [],
   "author": "",
