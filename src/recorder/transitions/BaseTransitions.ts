@@ -1,6 +1,6 @@
 // src/recorder/transitions/base/BaseTransition.ts
 import { spawn } from 'child_process';
-import { Segment } from '../segments/types';
+import { RecordingSegment } from '../types';
 import { BaseTransitionOptions } from './types';
 import { MetricsLogger } from '../metrics/MetricsLogger';
 import * as fs from 'fs';
@@ -39,7 +39,7 @@ export abstract class BaseTransition<T extends BaseTransitionOptions> {
   }
 
   async apply(
-    segments: Segment[],
+    segments: RecordingSegment[],
     outputPath: string,
     options: T
   ): Promise<void> {

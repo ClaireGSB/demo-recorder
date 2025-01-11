@@ -161,6 +161,17 @@ type = "wait"
 duration = 2000  # milliseconds
 ```
 
+### Pause
+
+the transition is optional. 
+Supported transitions are "fade" and "dissolve".
+```toml
+[[steps]]
+type = "pause"
+transition = { type = "fade", duration = 500, options = { color = "#FFFFFF" } }
+```
+
+
 ## Environment Variables
 
 Sensitive data like credentials should be provided through environment variables. Create a `.env` file in your project:

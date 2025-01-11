@@ -178,23 +178,21 @@ export class ScreenRecorder {
         await this.combineSegments(transitionManager);
 
         // Cleanup temp files
-        // this.segments.forEach(segment => {
-        //   fs.unlinkSync(segment.path);
-        //   MetricsLogger.logInfo(`Deleted temp segment: ${segment.path}`);
-        // });
+        this.segments.forEach(segment => {
+          fs.unlinkSync(segment.path);
+          MetricsLogger.logInfo(`Deleted temp segment: ${segment.path}`);
+        });
 
-        // if (fs.existsSync(this.tempDir)) {
-        //   fs.rmdirSync(this.tempDir);
-        //   MetricsLogger.logInfo(`Removed temp directory: ${this.tempDir}`);
-        // }
+        if (fs.existsSync(this.tempDir)) {
+          fs.rmdirSync(this.tempDir);
+          MetricsLogger.logInfo(`Removed temp directory: ${this.tempDir}`);
+        }
       }
     } catch (error) {
       MetricsLogger.logError(error as Error, 'Segment processing');
       throw error;
     }
   }
-
-
 
   async pause(transition?: BaseTransitionOptions): Promise<void> {
     if (!this.isRecording || this.isPaused) return;

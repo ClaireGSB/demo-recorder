@@ -56,7 +56,13 @@ type = "wait"
 duration = 1000
 
 [[steps]]
-type = "pauseRecording"  # Pause during the long loading time
+type = "pauseRecording" 
+# optionally add transition effet; this will apply between the recording segment that just ended and the segment that is about to start 
+# Fade transition
+transition = { type = "fade", duration = 500, options = { color = "#FFFFFF" } }
+
+# Dissovle transition
+# transition = { type = "dissolve", duration = 750, options = { strength = 1.5 } }
 
 
 # Navigate to content page

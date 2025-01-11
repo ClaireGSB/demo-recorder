@@ -1,9 +1,11 @@
 // src/recorder/transitions/TransitionManager.ts
-import { Segment } from '../segments/types';
+import { RecordingSegment } from '../types';
 import { TransitionOptions, TransitionType } from './types';
 import { FadeTransition } from './FadeTransition';
 import { DissolveTransition } from './DissolveTransition';
 import { BaseTransition } from './BaseTransitions';
+import { MetricsLogger } from '../metrics/MetricsLogger';
+
 
 export class TransitionManager {
   private transitions: Record<TransitionType, BaseTransition<any>> = {
@@ -12,15 +14,35 @@ export class TransitionManager {
   };
 
   async applyTransition(
-    segments: Segment[],
+    segments: RecordingSegment[],
     outputPath: string,
     transitionOptions: TransitionOptions
   ): Promise<void> {
-    const transition = this.transitions[transitionOptions.type];
-    if (!transition) {
-      throw new Error(`Unsupported transition type: ${transitionOptions.type}`);
+    if (segments.length < 2) {
+      throw new Error('At least two segments are required for transition');
     }
 
-    return transition.apply(segments, outputPath, transitionOptions);
+    // Find the first segment with a transition
+    const transitionSegmentIndex = segments.findIndex(seg => seg.hasTransition && seg.transition);
+    if (transitionSegmentIndex === -1 || transitionSegmentIndex === segments.length - 1) {
+      MetricsLogger.logInfo('No valid transitions found between segments');
+      return;
+    }
+
+    const segment = segments[transitionSegmentIndex];
+    const nextSegment = segments[transitionSegmentIndex + 1];
+
+    const transition = this.transitions[segment.transition!.type];
+    if (!transition) {
+      throw new Error(`Unsupported transition type: ${segment.transition!.type}`);
+    }
+
+    MetricsLogger.logInfo(`Applying ${segment.transition!.type} transition between segments ${transitionSegmentIndex} and ${transitionSegmentIndex + 1}`);
+    
+    return transition.apply(
+      [segment, nextSegment],
+      outputPath,
+      segment.transition!
+    );
   }
 }

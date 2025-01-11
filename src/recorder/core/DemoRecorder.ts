@@ -105,12 +105,12 @@ export class DemoRecorder {
           await this.recorder.stop();
           break;
 
-          case 'pauseRecording':
-            if (!this.recorder) throw new Error('Recorder not initialized');
-            MetricsLogger.logInfo(`Pausing recording${step.transition ? ` with ${step.transition.type} transition` : ''}`);
-            // Pass the transition configuration to pause
-            await this.recorder.pause(step.transition);
-            break;
+        case 'pauseRecording':
+          if (!this.recorder) throw new Error('Recorder not initialized');
+          MetricsLogger.logInfo(`Pausing recording${step.transition ? ` with ${step.transition.type} transition` : ''}`);
+          // Pass the transition configuration to pause
+          await this.recorder.pause(step.transition);
+          break;
 
         case 'resumeRecording':
           if (!this.recorder) throw new Error('Recorder not initialized');
@@ -130,9 +130,9 @@ export class DemoRecorder {
     try {
       await this.initialize();
       if (!this.page || !this.recorder) throw new Error('Failed to initialize');
-      
+
       const startTime = Date.now();
-      
+
       for (const step of this.config.steps) {
         await this.executeStep(step);
       }
