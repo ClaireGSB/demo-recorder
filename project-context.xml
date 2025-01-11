@@ -101,35 +101,35 @@ export class InputActions {
   }
 
   async typeText(selector: string, text: string, options: TypeOptions = {}) {
-    const { 
-      delay: typeDelay = 100, 
-      isTextarea = false 
+    const {
+      delay: typeDelay = 100,
+      isTextarea = false
     } = options;
 
     const targetSelector = isTextarea ? `${selector} textarea` : selector;
-    
+
     // Click first
     await this.mouseActions.click(targetSelector);
-    
+
     // Small delay before typing
     await delay(50);
-    
+
     // Type the text
     await this.page.type(targetSelector, text, { delay: typeDelay });
   }
 
   async clearAndType(selector: string, text: string, options: TypeOptions = {}) {
     const targetSelector = options.isTextarea ? `${selector} textarea` : selector;
-    
+
     await this.mouseActions.click(targetSelector);
     await delay(50);
-    
+
     // Clear existing content
     await this.page.keyboard.down('Control');
     await this.page.keyboard.press('A');
     await this.page.keyboard.up('Control');
     await this.page.keyboard.press('Backspace');
-    
+
     // Type new content
     await this.page.type(targetSelector, text, { delay: options.delay });
   }
@@ -373,13 +373,13 @@ export class SelectActions {
   async select(selectSelector: string, optionSelector: string) {
     // Open the select
     await this.mouseActions.click(selectSelector);
-    
+
     // Wait for options to be visible
     await delay(500);
-    
+
     // Select the option
     await this.mouseActions.click(optionSelector);
-    
+
     // Wait for select to close
     await delay(500);
   }
@@ -391,7 +391,7 @@ export class SelectActions {
     try {
       // Use page.$ instead of evaluateHandle for proper typing
       const options = await this.page.$$(`${selectSelector} .v-list-item`);
-      
+
       for (const option of options) {
         const textContent = await option.evaluate(el => el.textContent);
         if (textContent?.includes(text)) {
@@ -400,7 +400,7 @@ export class SelectActions {
           return;
         }
       }
-      
+
       console.warn(`Option with text "${text}" not found in select ${selectSelector}`);
     } catch (error) {
       console.error(`Error selecting option: ${error}`);
@@ -418,7 +418,7 @@ export class SelectActions {
 
       // First find all options
       const options = await this.page.$$(optionSelector);
-      
+
       // Then find the one with matching text
       for (const option of options) {
         const textContent = await this.page.evaluate(el => el.textContent, option);
@@ -582,10 +582,10 @@ async function init() {
     }
 
     console.log(`Initializing demo recorder config in: ${targetDir}`);
-    
+
     // This will create the config file if it doesn't exist
     const configPath = ensureConfigExists(targetDir);
-    
+
     console.log('\nConfiguration file created successfully!');
     console.log(`Please edit ${configPath} to configure your recording steps.`);
     console.log('\nOnce configured, you can run:');
@@ -674,6 +674,14 @@ class CustomScreenRecorder {
   private isRecording: boolean = false;
   private isPaused: boolean = false;
   private pausedTime: number = 0;
+  private frameQueue: Array<{ data: Buffer, timestamp: number }> = [];
+  private lastFrameTime: number = 0;
+  private targetFrameInterval: number;
+  private queueProcessor?: NodeJS.Timeout;
+  private frameTimings: number[] = [];
+  private queueSizeHistory: number[] = [];
+  private lastMetricsLog = Date.now();
+  private METRICS_INTERVAL = 5000; // Log every 5 seconds
 
   public getStatus() {
     return {
@@ -688,11 +696,13 @@ class CustomScreenRecorder {
     private options: RecordingOptions = {
       fps: 30,
       quality: 90,
-      videoCrf: 18,
+      videoCrf: 23,
       videoCodec: 'libx264',
-      videoPreset: 'ultrafast'
+      videoPreset: 'veryfast'
     }
-  ) { }
+  ) {
+    this.targetFrameInterval = 1000 / this.options.fps;
+  }
 
   async start(outputPath: string): Promise<void> {
     // Ensure the output directory exists
@@ -700,6 +710,8 @@ class CustomScreenRecorder {
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
+
+    await this.optimizeProcessPriority();
 
     this.client = await this.page.createCDPSession();
     this.isRecording = true;
@@ -713,7 +725,13 @@ class CustomScreenRecorder {
       '-c:v', this.options.videoCodec,
       '-preset', this.options.videoPreset,
       '-crf', `${this.options.videoCrf}`,
+      '-tune', 'zerolatency',
+      '-maxrate', '2500k',
+      '-bufsize', '5000k',
       '-pix_fmt', 'yuv420p',
+      '-profile:v', 'high',
+      '-level', '4.1',
+      '-movflags', '+faststart',
       outputPath
     ]);
 
@@ -729,10 +747,20 @@ class CustomScreenRecorder {
 
     await this.client.on('Page.screencastFrame', async (frame) => {
       try {
-        if (!this.client) return;
+        if (!this.client || !this.isRecording || this.isPaused) return;
 
-        this.ffmpeg.stdin.write(Buffer.from(frame.data, 'base64'));
-        this.frameCount++;
+        // Convert frame to buffer immediately
+        const frameBuffer = Buffer.from(frame.data, 'base64');
+
+        // Add to queue if we're not too far behind
+        if (this.frameQueue.length < 30) { // Maximum 1 second buffer at 30fps
+          this.frameQueue.push({
+            data: frameBuffer,
+            timestamp: Date.now()
+          });
+        } else {
+          console.warn('Dropping frame - queue full');
+        }
 
         await this.client.send('Page.screencastFrameAck', {
           sessionId: frame.sessionId
@@ -741,12 +769,22 @@ class CustomScreenRecorder {
         console.error('Error processing frame:', error);
       }
     });
+
+    // Start the queue processor
+    this.startQueueProcessor();
   }
 
   async stop(): Promise<void> {
+    this.stopQueueProcessor();
     if (this.client) {
       try {
         await this.client.send('Page.stopScreencast');
+
+        // Process any remaining frames
+        while (this.frameQueue.length > 0) {
+          await this.processFrameQueue();
+        }
+
         this.ffmpeg.stdin.end();
 
         await new Promise<void>((resolve, reject) => {
@@ -791,6 +829,109 @@ class CustomScreenRecorder {
       });
       this.isPaused = false;
       console.log(`Recording resumed after ${Date.now() - this.pausedTime}ms pause`);
+    }
+  }
+
+  private async processFrameQueue() {
+    if (!this.isRecording || this.isPaused || this.frameQueue.length === 0) {
+      return;
+    }
+
+    const startTime = Date.now();
+    const frame = this.frameQueue.shift();
+    if (!frame) return;
+
+    const now = Date.now();
+    const timeSinceLastFrame = now - this.lastFrameTime;
+
+    if (timeSinceLastFrame < this.targetFrameInterval) {
+      await delay(this.targetFrameInterval - timeSinceLastFrame);
+    }
+
+    if (this.ffmpeg && this.ffmpeg.stdin.writable) {
+      this.ffmpeg.stdin.write(frame.data);
+      this.frameCount++;
+      this.lastFrameTime = Date.now();
+
+      // Collect metrics
+      this.frameTimings.push(Date.now() - startTime);
+      this.queueSizeHistory.push(this.frameQueue.length);
+      this.logPerformanceMetrics();
+
+      if (this.frameCount % 30 === 0) { // Check every 30 frames
+        this.checkMemoryUsage();
+      }
+    }
+  }
+
+  private shouldProcessFrame(): boolean {
+    // Process every Nth frame when under pressure
+    if (this.frameQueue.length > 20) {
+      return this.frameCount % 2 === 0; // Process every other frame
+    }
+    return true;
+  }
+
+  private startQueueProcessor() {
+    this.queueProcessor = setInterval(() => {
+      this.processFrameQueue().catch(console.error);
+    }, this.targetFrameInterval / 2);
+  }
+
+  private stopQueueProcessor() {
+    if (this.queueProcessor) {
+      clearInterval(this.queueProcessor);
+      this.queueProcessor = undefined;
+    }
+  }
+
+  private logPerformanceMetrics() {
+    const now = Date.now();
+    if (now - this.lastMetricsLog < this.METRICS_INTERVAL) return;
+
+    // Calculate frame timing statistics
+    const avgFrameTime = this.frameTimings.reduce((a, b) => a + b, 0) / this.frameTimings.length;
+    const maxFrameTime = Math.max(...this.frameTimings);
+    const avgQueueSize = this.queueSizeHistory.reduce((a, b) => a + b, 0) / this.queueSizeHistory.length;
+
+    console.log('Recording Performance Metrics:');
+    console.log(`- Average frame processing time: ${avgFrameTime.toFixed(2)}ms`);
+    console.log(`- Max frame processing time: ${maxFrameTime.toFixed(2)}ms`);
+    console.log(`- Current queue size: ${this.frameQueue.length}`);
+    console.log(`- Average queue size: ${avgQueueSize.toFixed(2)}`);
+    console.log(`- Frames captured: ${this.frameCount}`);
+    console.log(`- Theoretical FPS: ${(1000 / avgFrameTime).toFixed(2)}`);
+
+    // Reset for next interval
+    this.frameTimings = [];
+    this.queueSizeHistory = [];
+    this.lastMetricsLog = now;
+  }
+
+  private async optimizeProcessPriority() {
+    if (process.platform === 'darwin' || process.platform === 'linux') {
+      try {
+        const { exec } = require('child_process');
+        // Set nice value to -10 (higher priority)
+        exec(`renice -n -10 -p ${process.pid}`, (error: any) => {
+          if (error) {
+            console.warn('Failed to set process priority:', error);
+          }
+        });
+      } catch (error) {
+        console.warn('Failed to optimize process priority:', error);
+      }
+    }
+  }
+
+  private checkMemoryUsage() {
+    const used = process.memoryUsage();
+    const maxHeapSize = used.heapTotal * 0.9; // 90% threshold
+
+    if (used.heapUsed > maxHeapSize) {
+      console.warn('Memory pressure detected - dropping frames');
+      // Clear half the queue
+      this.frameQueue.splice(0, Math.floor(this.frameQueue.length / 2));
     }
   }
 }
@@ -963,11 +1104,11 @@ export interface Step {
   typeConfig?: TypeConfig;
 }
 
-export type StepType = 
-  | 'navigate' 
-  | 'input' 
-  | 'select' 
-  | 'click' 
+export type StepType =
+  | 'navigate'
+  | 'input'
+  | 'select'
+  | 'click'
   | 'wait'
   | 'scrollDown'
   | 'startRecording'
@@ -975,12 +1116,12 @@ export type StepType =
   | 'pauseRecording'
   | 'resumeRecording';
 
-  export interface ScrollStep extends Step {
-    type: 'scrollDown';
-    pixels: number;
-    duration?: number;  // milliseconds
-    moveMouse?: boolean;
-  }
+export interface ScrollStep extends Step {
+  type: 'scrollDown';
+  pixels: number;
+  duration?: number;  // milliseconds
+  moveMouse?: boolean;
+}
 export interface ProjectConfig {
   name: string;
   baseUrl: string;
@@ -1196,7 +1337,7 @@ export class MouseHelper {
   private initPromise: Promise<void> | null = null;
   private mouseHelperContent: string | null = null;
 
-  private constructor() {}
+  private constructor() { }
 
   static getInstance(): MouseHelper {
     if (!MouseHelper.instance) {
@@ -1293,7 +1434,7 @@ export class MouseHelper {
             await page.evaluate(() => {
               window['mouse-helper']();
             });
-            
+
             const helperElement = await page.$('.mouse-helper');
             if (helperElement) {
               console.log('Mouse helper initialized successfully on attempt', attempt + 1);
