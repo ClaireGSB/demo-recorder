@@ -35,15 +35,14 @@ class CustomScreenRecorder {
     };
   }
 
-  private readonly MAX_QUEUE_SIZE = 15; // Reduced from 30
-  private readonly FRAME_SAMPLE_RATE = 2; // Process every nth frame when under pressure
+  private readonly MAX_QUEUE_SIZE = 30; // Reduced from 30
   private frameCounter = 0;
 
 
   constructor(
     private page: puppeteer.Page,
     private options: RecordingOptions = {
-      fps: 30,
+      fps: 60,
       quality: 90,
       videoCrf: 18,
       videoCodec: 'libx264',
@@ -70,16 +69,18 @@ class CustomScreenRecorder {
       '-r', `${this.options.fps}`,
       '-i', '-',
       '-c:v', this.options.videoCodec,
-      '-preset', 'veryfast', // Changed from ultrafast for better quality
-      '-crf', '23',  // Changed from 18 for better compression
+      '-preset', 'ultrafast', // Changed from ultrafast for better quality
+      // '-crf', '23',
       '-tune', 'zerolatency',
       '-maxrate', '4M', // Increased for better quality
-      '-bufsize', '8M', // Increased buffer size
+      '-bufsize', '16M', // Increased buffer size
       '-pix_fmt', 'yuv420p',
-      '-profile:v', 'main', // Changed from high
-      '-level', '4.0',
+      '-profile:v', 'baseline', // Changed from high
+      '-level', '3.0',
       '-x264opts', 'no-scenecut', // Prevent keyframe insertion
       '-movflags', '+faststart',
+      '-threads', '8',             // Explicit thread count
+      '-x264opts', 'threads=8:no-scenecut',  // Thread hints
       outputPath
     ]);
 
@@ -102,10 +103,10 @@ class CustomScreenRecorder {
         this.frameCounter++;
 
         // Sample frames when under pressure
-        if (this.frameQueue.length > 10 && this.frameCounter % this.FRAME_SAMPLE_RATE !== 0) {
-          await this.client.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
-          return;
-        }
+        // if (this.frameQueue.length > 10 && this.frameCounter % this.FRAME_SAMPLE_RATE !== 0) {
+        //   await this.client.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
+        //   return;
+        // }
 
         const frameBuffer = Buffer.from(frame.data, 'base64');
 
@@ -195,73 +196,46 @@ class CustomScreenRecorder {
     }
   }
 
-  // private async processFrameQueue() {
-  //   if (!this.isRecording || this.isPaused || this.frameQueue.length === 0) {
-  //     return;
-  //   }
-
-  //   const frame = this.frameQueue.shift();
-  //   if (!frame) return;
-
-  //   const now = Date.now();
-  //   if (this.ffmpeg && this.ffmpeg.stdin.writable) {
-  //     this.ffmpeg.stdin.write(frame.data);
-  //     this.encodedFrameCount++;  // Increment when we actually write to ffmpeg
-  //     this.lastFrameTime = now;
-      
-  //     const encodingTime = now - frame.timestamp;
-  //     this.encodingTimes.push(encodingTime);
-      
-  //     this.logPerformanceMetrics();
-  //   }
-  // }
 
   private async processFrameQueue() {
     if (!this.isRecording || this.isPaused || this.frameQueue.length === 0) {
-      return;
+        return;
     }
 
-    const frame = this.frameQueue[0]; // Peek don't shift yet
-    const now = Date.now();
-    const timeSinceLastFrame = now - this.lastFrameTime;
+    try {
+        const now = Date.now();
+        // Process multiple frames if we're falling behind
+        const framesToProcess = Math.min(
+            this.frameQueue.length,
+            Math.max(1, Math.floor((now - this.lastFrameTime) / this.targetFrameInterval))
+        );
 
-    // If we're ahead of schedule, wait
-    if (timeSinceLastFrame < this.targetFrameInterval) {
-      await delay(this.targetFrameInterval - timeSinceLastFrame);
-      return;
+        for (let i = 0; i < framesToProcess; i++) {
+            const frame = this.frameQueue.shift();
+            if (!frame || !this.ffmpeg?.stdin.writable) break;
+
+            this.ffmpeg.stdin.write(frame.data);
+            this.encodedFrameCount++;
+            this.frameCount++;
+            this.lastFrameTime = now;
+            
+            // Collect metrics
+            this.encodingTimes.push(now - frame.timestamp);
+            this.queueSizeHistory.push(this.frameQueue.length);
+        }
+
+        if (framesToProcess > 1) {
+            console.log(`Processed ${framesToProcess} frames to catch up`);
+        }
+    } catch (error) {
+        console.error('Error processing frame:', error);
     }
-
-    // Now we can safely process the frame
-    const encodingStart = Date.now();
-    this.frameQueue.shift();
-
-    if (timeSinceLastFrame < this.targetFrameInterval) {
-      await delay(this.targetFrameInterval - timeSinceLastFrame);
-    }
-
-    if (this.ffmpeg && this.ffmpeg.stdin.writable) {
-      this.ffmpeg.stdin.write(frame.data);
-      this.encodedFrameCount++;  
-      this.frameCount++;
-      const encodingTime = encodingStart - frame.timestamp;
-      this.encodingTimes.push(encodingTime);
-      this.lastFrameTime = Date.now();
-
-      // Collect metrics
-      this.frameTimings.push(Date.now() - now);
-      this.queueSizeHistory.push(this.frameQueue.length);
-      this.logPerformanceMetrics();
-    }
-
-    if (this.frameCount % 30 === 0) { // Check every 30 frames
-      this.checkMemoryUsage();
-    }
-  }
+}
 
   private startQueueProcessor() {
     this.queueProcessor = setInterval(() => {
       this.processFrameQueue().catch(console.error);
-    }, this.targetFrameInterval / 2);
+    }, this.targetFrameInterval / 4);
   }
 
   private stopQueueProcessor() {
@@ -279,24 +253,20 @@ class CustomScreenRecorder {
     const maxEncodingTime = Math.max(...this.encodingTimes);
     const realFPS = 1000 / avgEncodingTime;
 
-    const avgFrameTime = this.frameTimings.reduce((a, b) => a + b, 0) / this.frameTimings.length;
-    const maxFrameTime = Math.max(...this.frameTimings);
-    const avgQueueSize = this.queueSizeHistory.reduce((a, b) => a + b, 0) / this.queueSizeHistory.length;
-
-
     console.log('Recording Performance Metrics:');
     console.log(`- Average encoding time: ${avgEncodingTime.toFixed(2)}ms`);
     console.log(`- Max encoding time: ${maxEncodingTime.toFixed(2)}ms`);
-    console.log(`- Average frame processing time: ${avgFrameTime.toFixed(2)}ms`);
-    console.log(`- Max frame processing time: ${maxFrameTime.toFixed(2)}ms`);
-    console.log(`- Average queue size: ${avgQueueSize.toFixed(2)}`);
+    console.log(`- Average queue size: ${this.queueSizeHistory.reduce((a, b) => a + b, 0) / this.queueSizeHistory.length}`);
     console.log(`- Current queue size: ${this.frameQueue.length}`);
-    console.log(`- Actual FPS: ${realFPS.toFixed(2)}`);
-    console.log(`- Total frames received: ${this.frameCount}`);
+    console.log(`- Total frames captured: ${this.frameCounter}`);
+    console.log(`- Frames in queue: ${this.frameQueue.length}`);
     console.log(`- Frames encoded: ${this.encodedFrameCount}`);
-    console.log(`- Encoding speed: ${(realFPS / 30).toFixed(2)}x`);  // Relative to target 30fps
+    console.log(`- Frames dropped: ${this.frameCounter - this.encodedFrameCount}`);
+    console.log(`- Actual FPS: ${realFPS.toFixed(2)}`);
+    console.log(`- Target FPS: ${this.options.fps}`);
+    console.log(`- Encoding speed: ${(realFPS / this.options.fps).toFixed(2)}x`);
 
-    // Reset timing arrays but keep counts
+    // Reset for next interval
     this.encodingTimes = [];
     this.lastMetricsLog = now;
   }
