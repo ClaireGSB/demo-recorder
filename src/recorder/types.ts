@@ -28,11 +28,11 @@ export interface Step {
   typeConfig?: TypeConfig;
 }
 
-export type StepType = 
-  | 'navigate' 
-  | 'input' 
-  | 'select' 
-  | 'click' 
+export type StepType =
+  | 'navigate'
+  | 'input'
+  | 'select'
+  | 'click'
   | 'wait'
   | 'scrollDown'
   | 'startRecording'
@@ -40,12 +40,12 @@ export type StepType =
   | 'pauseRecording'
   | 'resumeRecording';
 
-  export interface ScrollStep extends Step {
-    type: 'scrollDown';
-    pixels: number;
-    duration?: number;  // milliseconds
-    moveMouse?: boolean;
-  }
+export interface ScrollStep extends Step {
+  type: 'scrollDown';
+  pixels: number;
+  duration?: number;  // milliseconds
+  moveMouse?: boolean;
+}
 export interface ProjectConfig {
   name: string;
   baseUrl: string;

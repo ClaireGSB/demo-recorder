@@ -9,7 +9,7 @@ export class MouseHelper {
   private initPromise: Promise<void> | null = null;
   private mouseHelperContent: string | null = null;
 
-  private constructor() {}
+  private constructor() { }
 
   static getInstance(): MouseHelper {
     if (!MouseHelper.instance) {
@@ -106,7 +106,7 @@ export class MouseHelper {
             await page.evaluate(() => {
               window['mouse-helper']();
             });
-            
+
             const helperElement = await page.$('.mouse-helper');
             if (helperElement) {
               console.log('Mouse helper initialized successfully on attempt', attempt + 1);

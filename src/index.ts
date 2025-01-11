@@ -32,10 +32,10 @@ async function init() {
     }
 
     console.log(`Initializing demo recorder config in: ${targetDir}`);
-    
+
     // This will create the config file if it doesn't exist
     const configPath = ensureConfigExists(targetDir);
-    
+
     console.log('\nConfiguration file created successfully!');
     console.log(`Please edit ${configPath} to configure your recording steps.`);
     console.log('\nOnce configured, you can run:');

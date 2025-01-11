@@ -33,7 +33,6 @@ included_paths = [
   # "example-config.toml",
   "package.json",
   "src/actions/InputActions.ts",
-  # "src/actions/MouseActions copy.ts",
   "src/actions/MouseActions.ts",
   "src/actions/SelectActions.ts",
   "src/config.ts",
@@ -41,7 +40,7 @@ included_paths = [
   "src/recorder/CustomScreenRecorder.ts",
   "src/recorder/types.ts",
   "src/utils/browser.ts",
-  # "src/utils/delay.ts",
+  "src/utils/delay.ts",
   "src/utils/mouse-helper.ts",
   # "tsconfig.json"
 ]

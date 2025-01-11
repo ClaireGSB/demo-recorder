@@ -13,13 +13,13 @@ export class SelectActions {
   async select(selectSelector: string, optionSelector: string) {
     // Open the select
     await this.mouseActions.click(selectSelector);
-    
+
     // Wait for options to be visible
     await delay(500);
-    
+
     // Select the option
     await this.mouseActions.click(optionSelector);
-    
+
     // Wait for select to close
     await delay(500);
   }
@@ -31,7 +31,7 @@ export class SelectActions {
     try {
       // Use page.$ instead of evaluateHandle for proper typing
       const options = await this.page.$$(`${selectSelector} .v-list-item`);
-      
+
       for (const option of options) {
         const textContent = await option.evaluate(el => el.textContent);
         if (textContent?.includes(text)) {
@@ -40,7 +40,7 @@ export class SelectActions {
           return;
         }
       }
-      
+
       console.warn(`Option with text "${text}" not found in select ${selectSelector}`);
     } catch (error) {
       console.error(`Error selecting option: ${error}`);
@@ -58,7 +58,7 @@ export class SelectActions {
 
       // First find all options
       const options = await this.page.$$(optionSelector);
-      
+
       // Then find the one with matching text
       for (const option of options) {
         const textContent = await this.page.evaluate(el => el.textContent, option);
