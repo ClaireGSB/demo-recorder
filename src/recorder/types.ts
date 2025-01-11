@@ -70,3 +70,41 @@ export interface DemoConfig {
   recording: RecordingConfig;
   steps: Step[];
 }
+
+export interface Frame {
+  data: Buffer;
+  timestamp: number;
+}
+
+export interface RecorderStatus {
+  isRecording: boolean;
+  isPaused: boolean;
+}
+
+export interface PerformanceMetrics {
+  avgEncodingTime: number;
+  maxEncodingTime: number;
+  realFPS: number;
+  queueSize: number;
+  totalFrames: number;
+  encodedFrames: number;
+  droppedFrames: number;
+}
+
+export interface ScreencastOptions {
+  format: 'jpeg';
+  quality: number;
+  maxWidth: number;
+  maxHeight: number;
+  everyNthFrame: number;
+}
+
+export interface FFmpegConfig {
+  inputFormat: string;
+  inputCodec: string;
+  outputCodec: string;
+  preset: string;
+  crf: number;
+  pixelFormat: string;
+  extraOptions?: string[];
+}
