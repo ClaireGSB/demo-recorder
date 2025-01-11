@@ -151,6 +151,9 @@ value = "Include specific examples and use cases"
 ### select
 - **description**: Selects an option from a dropdown.
 - **selector**: CSS selector of the select element.
+
+NOTE: it seems like we need a different format if the selector is a class... To investigate further
+
 - **option**: CSS selector of the option to select.
 
 ### click
