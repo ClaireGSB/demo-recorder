@@ -8,7 +8,6 @@ import { InputActions } from '../actions/InputActions';
 import { SelectActions } from '../actions/SelectActions';
 import { delay } from '../utils/delay';
 import { DemoConfig, RecordingOptions } from './types';
-import { checkMouseHelper } from '../utils/mouse-helper';
 
 class CustomScreenRecorder {
   private ffmpeg: any;
@@ -155,65 +154,11 @@ class DemoRecorder {
     });
 
     this.page = await this.browser.newPage();
-    await this.initializeMouseHelper();
 
-    await checkMouseHelper(this.page);
-
+    this.mouseActions = MouseActions.getInstance(this.page);
     this.recorder = new CustomScreenRecorder(this.page);
-    this.mouseActions = new MouseActions(this.page);
     this.inputActions = new InputActions(this.page);
     this.selectActions = new SelectActions(this.page);
-  }
-
-  private async initializeMouseHelper() {
-    if (!this.page) throw new Error('Page not initialized');
-
-    try {
-      const mouseHelperPath = require.resolve('mouse-helper/dist/mouse-helper.js');
-      console.log('Mouse helper path:', mouseHelperPath);
-      const mouseHelperContent = fs.readFileSync(mouseHelperPath, 'utf8');
-      console.log('Mouse helper content loaded, length:', mouseHelperContent.length);
-
-      // Add the mouse-helper script to be evaluated on each new document
-      await this.page.evaluateOnNewDocument(mouseHelperContent);
-
-      // Also initialize it on the current page
-      await this.page.evaluate(mouseHelperContent);
-
-      // Add initialization calls
-      await this.page.evaluateOnNewDocument(`
-        window.self = window;
-        window.addEventListener('load', () => {
-          if (typeof window['mouse-helper'] === 'function') {
-            console.log('Initializing mouse helper on load');
-            window['mouse-helper']();
-          } else {
-            console.error('Mouse helper function not found on load');
-          }
-        });
-        if (document.readyState === 'complete') {
-          if (typeof window['mouse-helper'] === 'function') {
-            console.log('Initializing mouse helper immediately');
-            window['mouse-helper']();
-          }
-        }
-      `);
-
-      // Initialize on current page if already loaded
-      await this.page.evaluate(`
-        window.self = window;
-        if (typeof window['mouse-helper'] === 'function') {
-          console.log('Initializing mouse helper on current page');
-          window['mouse-helper']();
-        } else {
-          console.error('Mouse helper function not found on current page');
-        }
-      `);
-
-    } catch (error) {
-      console.error('Failed to initialize mouse helper:', error);
-      console.error('Error details:', error instanceof Error ? error.message : String(error));
-    }
   }
 
   async executeStep(step: any) {
@@ -230,19 +175,20 @@ class DemoRecorder {
           await this.page.goto(`${this.config.project.baseUrl}${step.path}`, {
             waitUntil: ['networkidle0', 'load']
           });
-          await delay(1000); // Give time for mouse helper to initialize
+          // Give the page time to stabilize after navigation
+          await delay(500);
           break;
 
-          case 'input':
-            console.log(`Typing into: ${step.selector}`);
-            const typeConfig = {
-              ...this.config.recording.defaultTypeConfig,
-              ...step.typeConfig
-            };
-            await this.inputActions.typeText(step.selector!, step.value!, {
-              isTextarea: step.selector?.includes('textarea'),
-              delay: typeConfig.slowType ? (typeConfig.typeDelay || 150) : 0
-            });
+        case 'input':
+          console.log(`Typing into: ${step.selector}`);
+          const typeConfig = {
+            ...this.config.recording.defaultTypeConfig,
+            ...step.typeConfig
+          };
+          await this.inputActions.typeText(step.selector!, step.value!, {
+            isTextarea: step.selector?.includes('textarea'),
+            delay: typeConfig.slowType ? (typeConfig.typeDelay || 150) : 0
+          });
           break;
 
         case 'select':
@@ -301,12 +247,12 @@ class DemoRecorder {
     try {
       await this.initialize();
       if (!this.page || !this.recorder) throw new Error('Failed to initialize');
-  
+
       // Don't auto-start recording - wait for a startRecording step
       for (const step of this.config.steps) {
         await this.executeStep(step);
       }
-  
+
       // Only stop if we're still recording at the end
       if (this.recorder.getStatus().isRecording) {
         console.log('Stopping recording...');

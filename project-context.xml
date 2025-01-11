@@ -20,7 +20,6 @@
 </projectInfo>
   <fileTree>
     <![CDATA[
-├── .DS_Store
 ├── .demo-recorder.toml
 ├── README.md
 ├── example-config.toml
@@ -51,344 +50,6 @@
   </fileTree>
   <fileContents>
     
-          <file>
-            <path>README.md</path>
-            <content><![CDATA[# Demo Recorder
-
-A tool for automatically recording web application demos using Puppeteer. Creates smooth, professional-looking demo videos with visible mouse movements and natural interactions.
-
-## Features
-
-- Record automated demos of web applications
-- Smooth mouse movements with visual cursor indicator
-- Support for various interactions:
-  - Clicking elements
-  - Typing in input fields and textareas
-  - Selecting from dropdowns
-  - Navigation
-  - Timed waits
-- Configurable recording settings
-- TOML-based configuration
-
-## Installation
-
-1. Clone the repository:
-```bash
-git clone [your-repo-url]
-cd demo-recorder
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Add the tool to your shell configuration (`~/.bashrc` or `~/.zshrc`):
-```bash
-alias demo-record='function _demo_record() { npm run --prefix /absolute/path/to/demo-recorder start "$(pwd)"; }; _demo_record'
-```
-
-Replace `/absolute/path/to/demo-recorder` with the actual path where you cloned the repository.
-
-4. Source your shell configuration:
-```bash
-source ~/.bashrc  # or source ~/.zshrc
-```
-
-## Usage
-
-1. Create a `.demo-recorder.toml` file in your project directory:
-```bash
-cp /path/to/demo-recorder/.demo-recorder.template.toml /your/project/.demo-recorder.toml
-```
-
-2. Configure your recording steps in the TOML file
-
-3. Run the recorder from your project directory:
-```bash
-demo-record
-```
-
-## Configuration Example
-
-Here's a complete example of a `.demo-recorder.toml` file:
-
-```toml
-# Project configuration
-[project]
-name = "my-nuxt-app"
-baseUrl = "http://localhost:3000"
-
-[project.viewport]
-width = 1280
-height = 800
-
-# Authentication (optional)
-[auth]
-email = "${DEMO_USER_EMAIL}"
-password = "${DEMO_USER_PASSWORD}"
-
-# Recording settings
-[recording]
-output = "recordings/login-flow.mp4"
-fps = 30
-quality = 90
-
-# Demo recording steps
-[[steps]]
-type = "navigate"
-path = "/login"
-
-[[steps]]
-type = "wait"
-duration = 1000
-
-[[steps]]
-type = "input"
-selector = "[type='email']"
-value = "${auth.email}"
-
-[[steps]]
-type = "input"
-selector = "[type='password']"
-value = "${auth.password}"
-
-[[steps]]
-type = "click"
-selector = "[type='submit']"
-
-[[steps]]
-type = "wait"
-duration = 2000
-
-[[steps]]
-type = "select"
-selector = "[data-test='content-type-select']"
-option = "[data-test='content-type-twitter_post']"
-
-[[steps]]
-type = "input"
-selector = "[data-test='topic']"
-value = "The Future of AI"
-
-[[steps]]
-type = "input"
-selector = "[data-test='additional_instructions'] textarea"
-value = "Include specific examples and use cases"
-```
-
-## Step Types
-
-### Navigate
-```toml
-[[steps]]
-type = "navigate"
-path = "/some-path"  # Will be appended to baseUrl
-```
-
-### Input
-```toml
-[[steps]]
-type = "input"
-selector = "[data-test='field-name']"
-value = "Text to type"
-```
-
-### Select
-```toml
-[[steps]]
-type = "select"
-selector = "[data-test='dropdown']"
-option = "[data-test='option-value']"  # Selector for the option to click
-```
-
-### Click
-```toml
-[[steps]]
-type = "click"
-selector = "[data-test='button']"
-```
-
-### Wait
-```toml
-[[steps]]
-type = "wait"
-duration = 2000  # milliseconds
-```
-
-## Environment Variables
-
-Sensitive data like credentials should be provided through environment variables. Create a `.env` file in your project:
-
-```bash
-DEMO_USER_EMAIL=demo@example.com
-DEMO_USER_PASSWORD=your-password
-```
-
-## Requirements
-
-- Node.js 16+
-- FFmpeg (for video recording)
-- A running web application to record
-
-## Troubleshooting
-
-1. **Mouse Helper Not Visible**
-   - Check if mouse-helper is installed: `npm install mouse-helper`
-
-2. **Recording Fails**
-   - Ensure FFmpeg is installed on your system
-   - Check if the output directory exists
-   - Verify all selectors in your config exist in the page
-
-3. **Selectors Not Found**
-   - Use browser dev tools to verify selectors
-   - Ensure the page is fully loaded (add wait steps if needed)
-   - Check if elements are in iframes or shadow DOM
-
-## License
-
-MIT]]></content>
-          </file>
-        
-          <file>
-            <path>example-config.toml</path>
-            <content><![CDATA[# Project configuration
-[project]
-name = "demo-nuxt-app"
-baseUrl = "http://localhost:3001"
-
-[project.viewport]
-width = 1280
-height = 800
-
-# Authentication settings (using environment variables)
-[auth]
-email = "${SCREENSHOT_LOGIN_EMAIL}"
-password = "${SCREENSHOT_LOGIN_PASSWORD}"
-
-# Recording settings
-[recording]
-output = "recordings/login-flow-with-pauses.mp4"
-fps = 30
-quality = 90
-
-# Default typing configuration for all input steps
-[recording.defaultTypeConfig]
-slowType = false
-typeDelay = 50  # Default to fast typing
-
-# Demo recording steps
-[[steps]]
-type = "navigate"
-path = "/login"
-
-[[steps]]
-type = "wait"
-duration = 1000
-
-[[steps]]
-type = "startRecording"  # Explicitly start recording before login sequence
-
-[[steps]]
-type = "input"
-selector = "[type='email']"
-value = "${auth.email}"
-typeConfig = { slowType = true, typeDelay = 150 }  # Override for slow typing
-
-[[steps]]
-type = "input"
-selector = "[type='password']"
-value = "${auth.password}"
-# Uses default fast typing since no typeConfig specified
-
-[[steps]]
-type = "click"
-selector = "[type='submit']"
-
-[[steps]]
-type = "wait"
-duration = 1000
-
-[[steps]]
-type = "pauseRecording"  # Pause during the long loading time
-
-
-# Navigate to content page
-[[steps]]
-type = "navigate"
-path = "/content"
-
-[[steps]]
-type = "wait"
-duration = 5000
-
-[[steps]]
-type = "resumeRecording" # Resume recording after the long loading time
-
-# Select content type
-[[steps]]
-type = "select"
-selector = "[data-test='content-type-select']"
-option = "[data-test='content-type-twitter_post']"
-
-[[steps]]
-type = "wait"
-duration = 500
-
-# Select voice
-[[steps]]
-type = "select"
-selector = "[data-test='voice-select']"
-option = "[data-test='voice-Nativish']"
-
-[[steps]]
-type = "wait"
-duration = 500
-
-# Select action
-[[steps]]
-type = "click"
-selector = "[data-test='action-select']"
-
-[[steps]]
-type = "wait"
-duration = 1000
-
-[[steps]]
-type = "click"
-selector = "[data-test='write_topic']"
-
-[[steps]]
-type = "wait"
-duration = 1000
-
-# Fill topic field
-[[steps]]
-type = "input"
-selector = "[data-test='topic']"
-value = "The Future of AI Development"
-typeConfig = { slowType = true, typeDelay = 200 }
-
-[[steps]]
-type = "wait"
-duration = 1000
-
-# Fill additional instructions
-[[steps]]
-type = "input"
-selector = "[data-test='additional_instructions']"
-value = "Include specific examples of AI tools in development workflows."
-# Uses default fast typing since no typeConfig specified
-
-[[steps]]
-type = "wait"
-duration = 6000
-
-[[steps]]
-type = "stopRecording" ]]></content>
-          </file>
-        
           <file>
             <path>package.json</path>
             <content><![CDATA[{
@@ -436,7 +97,7 @@ export class InputActions {
   private mouseActions: MouseActions;
 
   constructor(private page: Page) {
-    this.mouseActions = new MouseActions(page);
+    this.mouseActions = MouseActions.getInstance(page);
   }
 
   async typeText(selector: string, text: string, options: TypeOptions = {}) {
@@ -445,25 +106,23 @@ export class InputActions {
       isTextarea = false 
     } = options;
 
-    // Use mouse movement for more natural interaction
     const targetSelector = isTextarea ? `${selector} textarea` : selector;
+    
+    // Click first
     await this.mouseActions.click(targetSelector);
     
-    // Ensure element is focused
-    await this.page.focus(targetSelector);
+    // Small delay before typing
+    await delay(50);
     
-    // Type with delay for natural appearance
+    // Type the text
     await this.page.type(targetSelector, text, { delay: typeDelay });
-    
-    // Small pause after typing
-    await delay(500);
   }
 
   async clearAndType(selector: string, text: string, options: TypeOptions = {}) {
     const targetSelector = options.isTextarea ? `${selector} textarea` : selector;
     
     await this.mouseActions.click(targetSelector);
-    await this.page.focus(targetSelector);
+    await delay(50);
     
     // Clear existing content
     await this.page.keyboard.down('Control');
@@ -472,7 +131,7 @@ export class InputActions {
     await this.page.keyboard.press('Backspace');
     
     // Type new content
-    await this.typeText(selector, text, options);
+    await this.page.type(targetSelector, text, { delay: options.delay });
   }
 }
 ]]></content>
@@ -483,72 +142,218 @@ export class InputActions {
             <content><![CDATA[// src/actions/MouseActions.ts
 import { Page } from 'puppeteer';
 import { delay } from '../utils/delay';
+import { MouseHelper } from '../utils/mouse-helper';
+
+declare global {
+  interface Window {
+    'mouse-helper': () => void;
+  }
+}
 
 export interface MouseMoveOptions {
-  delayMs?: number;
+  minSteps?: number;
+  maxSteps?: number;
+  minDelay?: number;
+  maxDelay?: number;
   shouldClick?: boolean;
-  steps?: number;
 }
 
+// Make MouseActions a singleton to ensure position state is maintained
 export class MouseActions {
-  private currentX: number = 0;
-  private currentY: number = 0;
+  private static instance: MouseActions | null = null;
+  private isMoving: boolean = false;
+  private lastKnownPosition: { x: number, y: number } = { x: 0, y: 0 };
+  private scrollOffset: number = 0;
 
-  constructor(private page: Page) {}
+  private constructor(private page: Page) {
+    console.log('MouseActions initialized with position:', this.lastKnownPosition);
+    // Initialize mouse helper
+    MouseHelper.getInstance().ensureInitialized(page).catch(error => {
+      console.warn('Failed to initialize mouse helper:', error);
+    });
+  }
 
-  async moveWithDelay(selector: string, options: MouseMoveOptions = {}) {
-    const { 
-      delayMs = 500, 
-      shouldClick = true,
-      steps = 25 
+  static getInstance(page: Page): MouseActions {
+    if (!MouseActions.instance) {
+      MouseActions.instance = new MouseActions(page);
+    }
+    return MouseActions.instance;
+  }
+
+  private async moveTo(targetX: number, targetY: number, options: MouseMoveOptions = {}): Promise<void> {
+    const {
+      minSteps = 35,  // Increased for smoother movement
+      maxSteps = 50,
+      minDelay = 10,
+      maxDelay = 15,
     } = options;
 
-    const element = await this.page.$(selector);
-    if (!element) {
-      console.warn(`Element not found: ${selector}`);
-      return false;
+    // NEW Adjust target position by scroll offset for distance calculation
+    const effectiveStartY = this.lastKnownPosition.y - this.scrollOffset;
+    const effectiveTargetY = targetY - this.scrollOffset;
+
+
+    // Calculate total distance
+    const distance = Math.sqrt(
+      Math.pow(targetX - this.lastKnownPosition.x, 2) +
+      Math.pow(effectiveTargetY - effectiveStartY, 2)
+    );
+
+    // Calculate steps based on distance, but ensure smooth movement
+    const steps = Math.min(maxSteps, Math.max(minSteps, Math.floor(distance / 10)));
+
+    // Bezier curve control points
+    const p0 = { x: this.lastKnownPosition.x, y: effectiveStartY }; // start
+    const p3 = { x: targetX, y: effectiveTargetY }; // end
+
+    // Create control points for smooth curve
+    // Randomize control points slightly for more natural movement
+    const randomizeOffset = () => (Math.random() - 0.5) * distance * 0.2;
+
+    const p1 = {
+      x: p0.x + (p3.x - p0.x) * 0.4 + randomizeOffset(),
+      y: p0.y + (p3.y - p0.y) * 0.2 + randomizeOffset()
+    };
+
+    const p2 = {
+      x: p0.x + (p3.x - p0.x) * 0.6 + randomizeOffset(),
+      y: p3.y + (p0.y - p3.y) * 0.2 + randomizeOffset()
+    };
+
+    // Cubic bezier function
+    const bezier = (t: number) => {
+      const oneMinusT = 1 - t;
+      const oneMinusTSquared = oneMinusT * oneMinusT;
+      const oneMinusTCubed = oneMinusTSquared * oneMinusT;
+      const tSquared = t * t;
+      const tCubed = tSquared * t;
+
+      const point = {
+        x: oneMinusTCubed * p0.x +
+          3 * oneMinusTSquared * t * p1.x +
+          3 * oneMinusT * tSquared * p2.x +
+          tCubed * p3.x,
+        y: oneMinusTCubed * p0.y +
+          3 * oneMinusTSquared * t * p1.y +
+          3 * oneMinusT * tSquared * p2.y +
+          tCubed * p3.y
+      };
+
+
+      // Add scroll offset back for actual mouse movement
+      return {
+        x: point.x,
+        y: point.y + this.scrollOffset
+      };
+
+    };
+
+    // Easing function for acceleration/deceleration
+    const easeInOutQuad = (t: number) => {
+      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    };
+
+    // Perform the movement
+    console.log('Beginning movement to:', { targetX, targetY });
+    for (let step = 0; step <= steps; step++) {
+      const t = easeInOutQuad(step / steps); // Apply easing
+      const point = bezier(t);
+
+      await this.page.mouse.move(point.x, point.y);
+      this.lastKnownPosition = { x: point.x, y: point.y };
+
+      // Variable delay based on acceleration curve
+      const progress = step / steps;
+      const speedFactor = 1 - Math.abs(2 * progress - 1); // Slower at start/end
+      const delay = minDelay + (maxDelay - minDelay) * speedFactor;
+
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
 
-    const box = await element.boundingBox();
-    if (!box) {
-      console.warn(`Could not get bounding box for: ${selector}`);
-      return false;
-    }
+    // Ensure we end exactly at target
+    await this.page.mouse.move(targetX, targetY);
+    this.lastKnownPosition = { x: targetX, y: targetY };
+    console.log('Movement completed; final position:', this.lastKnownPosition);
+  }
 
-    const startX = this.currentX;
-    const startY = this.currentY;
-    const endX = box.x + box.width / 2;
-    const endY = box.y + box.height / 2;
-
-    // Smooth mouse movement
-    for (let i = 0; i <= steps; i++) {
-      const x = startX + (endX - startX) * (i / steps);
-      const y = startY + (endY - startY) * (i / steps);
-      await this.page.mouse.move(x, y);
-      this.currentX = x;
-      this.currentY = y;
-      await delay(delayMs / steps);
-    }
-
-    if (shouldClick) {
-      await this.page.mouse.down();
+  async click(selector: string): Promise<boolean> {
+    if (this.isMoving) {
       await delay(100);
-      await this.page.mouse.up();
-      await delay(200);
     }
 
-    return true;
+    try {
+      this.isMoving = true;
+
+      // Wait for element to be ready
+      const element = await this.page.waitForSelector(selector, { visible: true });
+      if (!element) {
+        console.log('Element not found');
+        return false;
+      }
+
+      // Get element position
+      const box = await element.boundingBox();
+      if (!box) {
+        console.log('Could not get element bounding box');
+        return false;
+      }
+
+      const targetX = box.x + box.width / 2;
+      const targetY = box.y + box.height / 2;
+
+      // Move with steps
+      await this.moveTo(targetX, targetY);
+
+      console.log('Performing click action');
+      await this.page.mouse.down();
+      await delay(50);
+      await this.page.mouse.up();
+      console.log('Click completed');
+
+      return true;
+    } catch (error) {
+      console.error('Click failed:', error);
+      return false;
+    } finally {
+      this.isMoving = false;
+    }
   }
 
-  async click(selector: string) {
-    return this.moveWithDelay(selector, { shouldClick: true });
-  }
+  async smoothScroll(pixels: number, duration: number = 1000): Promise<void> {
+    if (this.isMoving) {
+      await delay(100);
+    }
 
-  getPosition() {
-    return { x: this.currentX, y: this.currentY };
+    try {
+      this.isMoving = true;
+      console.log(`Starting smooth scroll: ${pixels}px over ${duration}ms`);
+      const steps = Math.floor(duration / 16);
+      // pixels per step need to be integer. round down to avoid scrolling too far
+      const pixelsPerStep = Math.floor(pixels / steps);
+      // the remainder pixels to scroll
+      const remainder = pixels % steps;
+
+      // Track scroll offset, but don't adjust mouse position
+      this.scrollOffset += pixels;
+
+      for (let i = 0; i < steps; i++) {
+        await this.page.evaluate((y) => {
+          window.scrollBy(0, y);
+        }, pixelsPerStep);
+        await delay(16);
+      }
+      // Scroll the remainder pixels
+      await this.page.evaluate((y) => {
+        window.scrollBy(0, y);
+      }, remainder);
+
+      console.log('Scroll completed. New offset:', this.scrollOffset);
+    } finally {
+
+      this.isMoving = false;
+    }
   }
-}
-]]></content>
+}]]></content>
           </file>
         
           <file>
@@ -562,7 +367,7 @@ export class SelectActions {
   private mouseActions: MouseActions;
 
   constructor(private page: Page) {
-    this.mouseActions = new MouseActions(page);
+    this.mouseActions = MouseActions.getInstance(page);
   }
 
   async select(selectSelector: string, optionSelector: string) {
@@ -861,7 +666,6 @@ import { InputActions } from '../actions/InputActions';
 import { SelectActions } from '../actions/SelectActions';
 import { delay } from '../utils/delay';
 import { DemoConfig, RecordingOptions } from './types';
-import { checkMouseHelper } from '../utils/mouse-helper';
 
 class CustomScreenRecorder {
   private ffmpeg: any;
@@ -1008,65 +812,11 @@ class DemoRecorder {
     });
 
     this.page = await this.browser.newPage();
-    await this.initializeMouseHelper();
 
-    await checkMouseHelper(this.page);
-
+    this.mouseActions = MouseActions.getInstance(this.page);
     this.recorder = new CustomScreenRecorder(this.page);
-    this.mouseActions = new MouseActions(this.page);
     this.inputActions = new InputActions(this.page);
     this.selectActions = new SelectActions(this.page);
-  }
-
-  private async initializeMouseHelper() {
-    if (!this.page) throw new Error('Page not initialized');
-
-    try {
-      const mouseHelperPath = require.resolve('mouse-helper/dist/mouse-helper.js');
-      console.log('Mouse helper path:', mouseHelperPath);
-      const mouseHelperContent = fs.readFileSync(mouseHelperPath, 'utf8');
-      console.log('Mouse helper content loaded, length:', mouseHelperContent.length);
-
-      // Add the mouse-helper script to be evaluated on each new document
-      await this.page.evaluateOnNewDocument(mouseHelperContent);
-
-      // Also initialize it on the current page
-      await this.page.evaluate(mouseHelperContent);
-
-      // Add initialization calls
-      await this.page.evaluateOnNewDocument(`
-        window.self = window;
-        window.addEventListener('load', () => {
-          if (typeof window['mouse-helper'] === 'function') {
-            console.log('Initializing mouse helper on load');
-            window['mouse-helper']();
-          } else {
-            console.error('Mouse helper function not found on load');
-          }
-        });
-        if (document.readyState === 'complete') {
-          if (typeof window['mouse-helper'] === 'function') {
-            console.log('Initializing mouse helper immediately');
-            window['mouse-helper']();
-          }
-        }
-      `);
-
-      // Initialize on current page if already loaded
-      await this.page.evaluate(`
-        window.self = window;
-        if (typeof window['mouse-helper'] === 'function') {
-          console.log('Initializing mouse helper on current page');
-          window['mouse-helper']();
-        } else {
-          console.error('Mouse helper function not found on current page');
-        }
-      `);
-
-    } catch (error) {
-      console.error('Failed to initialize mouse helper:', error);
-      console.error('Error details:', error instanceof Error ? error.message : String(error));
-    }
   }
 
   async executeStep(step: any) {
@@ -1083,19 +833,20 @@ class DemoRecorder {
           await this.page.goto(`${this.config.project.baseUrl}${step.path}`, {
             waitUntil: ['networkidle0', 'load']
           });
-          await delay(1000); // Give time for mouse helper to initialize
+          // Give the page time to stabilize after navigation
+          await delay(500);
           break;
 
-          case 'input':
-            console.log(`Typing into: ${step.selector}`);
-            const typeConfig = {
-              ...this.config.recording.defaultTypeConfig,
-              ...step.typeConfig
-            };
-            await this.inputActions.typeText(step.selector!, step.value!, {
-              isTextarea: step.selector?.includes('textarea'),
-              delay: typeConfig.slowType ? (typeConfig.typeDelay || 150) : 50
-            });
+        case 'input':
+          console.log(`Typing into: ${step.selector}`);
+          const typeConfig = {
+            ...this.config.recording.defaultTypeConfig,
+            ...step.typeConfig
+          };
+          await this.inputActions.typeText(step.selector!, step.value!, {
+            isTextarea: step.selector?.includes('textarea'),
+            delay: typeConfig.slowType ? (typeConfig.typeDelay || 150) : 0
+          });
           break;
 
         case 'select':
@@ -1111,6 +862,14 @@ class DemoRecorder {
         case 'wait':
           console.log(`Waiting: ${step.duration}ms`);
           await delay(step.duration || 1000);
+          break;
+
+        case 'scrollDown':
+          console.log(`Scrolling: ${step.pixels}px`);
+          await this.mouseActions?.smoothScroll(
+            step.pixels,
+            step.duration || 1000
+          );
           break;
 
         case 'startRecording':
@@ -1146,12 +905,12 @@ class DemoRecorder {
     try {
       await this.initialize();
       if (!this.page || !this.recorder) throw new Error('Failed to initialize');
-  
+
       // Don't auto-start recording - wait for a startRecording step
       for (const step of this.config.steps) {
         await this.executeStep(step);
       }
-  
+
       // Only stop if we're still recording at the end
       if (this.recorder.getStatus().isRecording) {
         console.log('Stopping recording...');
@@ -1210,12 +969,18 @@ export type StepType =
   | 'select' 
   | 'click' 
   | 'wait'
+  | 'scrollDown'
   | 'startRecording'
   | 'stopRecording'
   | 'pauseRecording'
   | 'resumeRecording';
 
-
+  export interface ScrollStep extends Step {
+    type: 'scrollDown';
+    pixels: number;
+    duration?: number;  // milliseconds
+    moveMouse?: boolean;
+  }
 export interface ProjectConfig {
   name: string;
   baseUrl: string;
@@ -1419,21 +1184,143 @@ export const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, 
           </file>
         
           <file>
-            <path>tsconfig.json</path>
-            <content><![CDATA[{
-  "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["ES2020", "DOM"],
-    "outDir": "dist",
-    "rootDir": ".",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "**/*.test.ts"]
+            <path>src/utils/mouse-helper.ts</path>
+            <content><![CDATA[// src/utils/mouse-helper.ts
+import { Page } from 'puppeteer';
+import * as fs from 'fs';
+import { delay } from './delay';
+
+export class MouseHelper {
+  private static instance: MouseHelper;
+  private initialized: boolean = false;
+  private initPromise: Promise<void> | null = null;
+  private mouseHelperContent: string | null = null;
+
+  private constructor() {}
+
+  static getInstance(): MouseHelper {
+    if (!MouseHelper.instance) {
+      MouseHelper.instance = new MouseHelper();
+    }
+    return MouseHelper.instance;
+  }
+
+  private async loadMouseHelperContent() {
+    if (this.mouseHelperContent) return;
+
+    try {
+      const mouseHelperPath = require.resolve('mouse-helper/dist/mouse-helper.js');
+      this.mouseHelperContent = fs.readFileSync(mouseHelperPath, 'utf8');
+      console.log('Mouse helper content loaded, length:', this.mouseHelperContent.length);
+    } catch (error) {
+      console.error('Failed to load mouse helper content:', error);
+      throw error;
+    }
+  }
+
+  private async initializePage(page: Page): Promise<void> {
+    if (!this.mouseHelperContent) {
+      await this.loadMouseHelperContent();
+    }
+
+    await page.evaluateOnNewDocument(`
+      window.self = window;
+      ${this.mouseHelperContent}
+      
+      function initMouseHelper() {
+        console.log('InitMouseHelper called, state:', {
+          hasHelper: typeof window['mouse-helper'] === 'function',
+          readyState: document.readyState
+        });
+
+        if (typeof window['mouse-helper'] === 'function') {
+          try {
+            window['mouse-helper']();
+            console.log('Mouse helper initialized successfully');
+          } catch (error) {
+            console.error('Mouse helper initialization failed:', error);
+          }
+        }
+      }
+
+      // Initialize on page load
+      if (document.readyState === 'complete') {
+        console.log('Document ready, initializing immediately');
+        initMouseHelper();
+      } else {
+        console.log('Document not ready, waiting for load');
+        window.addEventListener('load', initMouseHelper);
+      }
+
+      // Backup initialization after a short delay
+      setTimeout(() => {
+        console.log('Backup initialization triggered');
+        initMouseHelper();
+      }, 500);
+    `);
+  }
+
+  async ensureInitialized(page: Page): Promise<boolean> {
+    if (this.initPromise) {
+      await this.initPromise;
+      return this.initialized;
+    }
+
+    this.initPromise = this.initialize(page);
+    try {
+      await this.initPromise;
+      return this.initialized;
+    } finally {
+      this.initPromise = null;
+    }
+  }
+
+  private async initialize(page: Page): Promise<void> {
+    if (this.initialized) return;
+
+    try {
+      await this.loadMouseHelperContent();
+      await this.initializePage(page);
+
+      // Try to initialize up to 3 times
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const isHelperPresent = await page.evaluate(() => {
+            return typeof window['mouse-helper'] === 'function';
+          });
+
+          if (isHelperPresent) {
+            await page.evaluate(() => {
+              window['mouse-helper']();
+            });
+            
+            const helperElement = await page.$('.mouse-helper');
+            if (helperElement) {
+              console.log('Mouse helper initialized successfully on attempt', attempt + 1);
+              this.initialized = true;
+              return;
+            }
+          }
+
+          if (attempt < 2) {
+            await delay(100);
+          }
+        } catch (error) {
+          console.warn(`Mouse helper init attempt ${attempt + 1} failed:`, error);
+          if (attempt === 2) throw error;
+        }
+      }
+    } catch (error) {
+      console.error('Mouse helper initialization failed:', error);
+      throw error;
+    }
+  }
+
+  async reinitialize(page: Page): Promise<void> {
+    this.initialized = false;
+    this.initPromise = null;
+    await this.ensureInitialized(page);
+  }
 }
 ]]></content>
           </file>

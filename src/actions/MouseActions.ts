@@ -1,98 +1,215 @@
 // src/actions/MouseActions.ts
 import { Page } from 'puppeteer';
 import { delay } from '../utils/delay';
+import { MouseHelper } from '../utils/mouse-helper';
 
-export interface MouseMoveOptions {
-  delayMs?: number;
-  shouldClick?: boolean;
-  steps?: number;
+declare global {
+  interface Window {
+    'mouse-helper': () => void;
+  }
 }
 
+export interface MouseMoveOptions {
+  minSteps?: number;
+  maxSteps?: number;
+  minDelay?: number;
+  maxDelay?: number;
+  shouldClick?: boolean;
+}
+
+// Make MouseActions a singleton to ensure position state is maintained
 export class MouseActions {
-  private currentX: number = 0;
-  private currentY: number = 0;
+  private static instance: MouseActions | null = null;
+  private isMoving: boolean = false;
+  private lastKnownPosition: { x: number, y: number } = { x: 0, y: 0 };
+  private scrollOffset: number = 0;
 
-  constructor(private page: Page) { }
+  private constructor(private page: Page) {
+    console.log('MouseActions initialized with position:', this.lastKnownPosition);
+    // Initialize mouse helper
+    MouseHelper.getInstance().ensureInitialized(page).catch(error => {
+      console.warn('Failed to initialize mouse helper:', error);
+    });
+  }
 
-  async moveWithDelay(selector: string, options: MouseMoveOptions = {}) {
+  static getInstance(page: Page): MouseActions {
+    if (!MouseActions.instance) {
+      MouseActions.instance = new MouseActions(page);
+    }
+    return MouseActions.instance;
+  }
+
+  private async moveTo(targetX: number, targetY: number, options: MouseMoveOptions = {}): Promise<void> {
     const {
-      delayMs = 500,
-      shouldClick = true,
-      steps = 25
+      minSteps = 35,  // Increased for smoother movement
+      maxSteps = 50,
+      minDelay = 10,
+      maxDelay = 15,
     } = options;
 
-    const element = await this.page.$(selector);
-    if (!element) {
-      console.warn(`Element not found: ${selector}`);
-      return false;
+    // NEW Adjust target position by scroll offset for distance calculation
+    const effectiveStartY = this.lastKnownPosition.y - this.scrollOffset;
+    const effectiveTargetY = targetY - this.scrollOffset;
+
+
+    // Calculate total distance
+    const distance = Math.sqrt(
+      Math.pow(targetX - this.lastKnownPosition.x, 2) +
+      Math.pow(effectiveTargetY - effectiveStartY, 2)
+    );
+
+    // Calculate steps based on distance, but ensure smooth movement
+    const steps = Math.min(maxSteps, Math.max(minSteps, Math.floor(distance / 10)));
+
+    // Bezier curve control points
+    const p0 = { x: this.lastKnownPosition.x, y: effectiveStartY }; // start
+    const p3 = { x: targetX, y: effectiveTargetY }; // end
+
+    // Create control points for smooth curve
+    // Randomize control points slightly for more natural movement
+    const randomizeOffset = () => (Math.random() - 0.5) * distance * 0.2;
+
+    const p1 = {
+      x: p0.x + (p3.x - p0.x) * 0.4 + randomizeOffset(),
+      y: p0.y + (p3.y - p0.y) * 0.2 + randomizeOffset()
+    };
+
+    const p2 = {
+      x: p0.x + (p3.x - p0.x) * 0.6 + randomizeOffset(),
+      y: p3.y + (p0.y - p3.y) * 0.2 + randomizeOffset()
+    };
+
+    // Cubic bezier function
+    const bezier = (t: number) => {
+      const oneMinusT = 1 - t;
+      const oneMinusTSquared = oneMinusT * oneMinusT;
+      const oneMinusTCubed = oneMinusTSquared * oneMinusT;
+      const tSquared = t * t;
+      const tCubed = tSquared * t;
+
+      const point = {
+        x: oneMinusTCubed * p0.x +
+          3 * oneMinusTSquared * t * p1.x +
+          3 * oneMinusT * tSquared * p2.x +
+          tCubed * p3.x,
+        y: oneMinusTCubed * p0.y +
+          3 * oneMinusTSquared * t * p1.y +
+          3 * oneMinusT * tSquared * p2.y +
+          tCubed * p3.y
+      };
+
+
+      // Add scroll offset back for actual mouse movement
+      return {
+        x: point.x,
+        y: point.y + this.scrollOffset
+      };
+
+    };
+
+    // Easing function for acceleration/deceleration
+    const easeInOutQuad = (t: number) => {
+      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    };
+
+    // Perform the movement
+    console.log('Beginning movement to:', { targetX, targetY });
+    for (let step = 0; step <= steps; step++) {
+      const t = easeInOutQuad(step / steps); // Apply easing
+      const point = bezier(t);
+
+      await this.page.mouse.move(point.x, point.y);
+      this.lastKnownPosition = { x: point.x, y: point.y };
+
+      // Variable delay based on acceleration curve
+      const progress = step / steps;
+      const speedFactor = 1 - Math.abs(2 * progress - 1); // Slower at start/end
+      const delay = minDelay + (maxDelay - minDelay) * speedFactor;
+
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
 
-    const box = await element.boundingBox();
-    if (!box) {
-      console.warn(`Could not get bounding box for: ${selector}`);
-      return false;
-    }
+    // Ensure we end exactly at target
+    await this.page.mouse.move(targetX, targetY);
+    this.lastKnownPosition = { x: targetX, y: targetY };
+    console.log('Movement completed; final position:', this.lastKnownPosition);
+  }
 
-    const startX = this.currentX;
-    const startY = this.currentY;
-    const endX = box.x + box.width / 2;
-    const endY = box.y + box.height / 2;
-
-    // Smooth mouse movement
-    for (let i = 0; i <= steps; i++) {
-      const x = startX + (endX - startX) * (i / steps);
-      const y = startY + (endY - startY) * (i / steps);
-      await this.page.mouse.move(x, y);
-      this.currentX = x;
-      this.currentY = y;
-      await delay(delayMs / steps);
-    }
-
-    if (shouldClick) {
-      await this.page.mouse.down();
+  async click(selector: string): Promise<boolean> {
+    if (this.isMoving) {
       await delay(100);
-      await this.page.mouse.up();
-      await delay(200);
     }
 
-    return true;
-  }
+    try {
+      this.isMoving = true;
 
-  async click(selector: string) {
-    return this.moveWithDelay(selector, { shouldClick: true });
-  }
-
-  getPosition() {
-    return { x: this.currentX, y: this.currentY };
-  }
-
-  async smoothScroll(pixels: number, duration: number = 1000, moveMouse: boolean = false) {
-    const steps = Math.floor(duration / 16);  // ~60fps
-    const pixelsPerStep = pixels / steps;
-    const stepDuration = duration / steps;
-
-    // Get current viewport height
-    const viewportHeight = await this.page.evaluate(() => window.innerHeight);
-
-    for (let i = 0; i < steps; i++) {
-      // Scroll the page
-      await this.page.evaluate((y) => {
-        window.scrollBy(0, y);
-      }, pixelsPerStep);
-
-      // Move mouse along with scroll if it's in the viewport
-      if (moveMouse) {
-        const currentPos = this.getPosition();
-        if (currentPos.y < viewportHeight) {
-          await this.page.mouse.move(
-            currentPos.x,
-            currentPos.y + pixelsPerStep
-          );
-          this.currentY += pixelsPerStep;
-        }
+      // Wait for element to be ready
+      const element = await this.page.waitForSelector(selector, { visible: true });
+      if (!element) {
+        console.log('Element not found');
+        return false;
       }
 
-      await delay(stepDuration);
+      // Get element position
+      const box = await element.boundingBox();
+      if (!box) {
+        console.log('Could not get element bounding box');
+        return false;
+      }
+
+      const targetX = box.x + box.width / 2;
+      const targetY = box.y + box.height / 2;
+
+      // Move with steps
+      await this.moveTo(targetX, targetY);
+
+      console.log('Performing click action');
+      await this.page.mouse.down();
+      await delay(50);
+      await this.page.mouse.up();
+      console.log('Click completed');
+
+      return true;
+    } catch (error) {
+      console.error('Click failed:', error);
+      return false;
+    } finally {
+      this.isMoving = false;
+    }
+  }
+
+  async smoothScroll(pixels: number, duration: number = 1000): Promise<void> {
+    if (this.isMoving) {
+      await delay(100);
+    }
+
+    try {
+      this.isMoving = true;
+      console.log(`Starting smooth scroll: ${pixels}px over ${duration}ms`);
+      const steps = Math.floor(duration / 16);
+      // pixels per step need to be integer. round down to avoid scrolling too far
+      const pixelsPerStep = Math.floor(pixels / steps);
+      // the remainder pixels to scroll
+      const remainder = pixels % steps;
+
+      // Track scroll offset, but don't adjust mouse position
+      this.scrollOffset += pixels;
+
+      for (let i = 0; i < steps; i++) {
+        await this.page.evaluate((y) => {
+          window.scrollBy(0, y);
+        }, pixelsPerStep);
+        await delay(16);
+      }
+      // Scroll the remainder pixels
+      await this.page.evaluate((y) => {
+        window.scrollBy(0, y);
+      }, remainder);
+
+      console.log('Scroll completed. New offset:', this.scrollOffset);
+    } finally {
+
+      this.isMoving = false;
     }
   }
 }
