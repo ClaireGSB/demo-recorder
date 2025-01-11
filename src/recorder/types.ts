@@ -11,6 +11,7 @@ export interface RecordingOptions {
   videoCrf: number;
   videoCodec: string;
   videoPreset: string;
+  viewport: ViewportDimensions;
 }
 
 export interface TypeConfig {
