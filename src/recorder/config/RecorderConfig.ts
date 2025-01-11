@@ -1,8 +1,8 @@
 // src/recorder/config/RecorderConfig.ts
-import type { RecordingOptions, ScreencastOptions } from '../types';
+import type { RecordingSettings, ScreencastOptions } from '../types';
 
 
-export const DEFAULT_RECORDING_OPTIONS: RecordingOptions = {
+export const DEFAULT_RECORDING_SETTINGS: RecordingSettings = {
   fps: 60,
   quality: 95,
   videoCrf: 17,

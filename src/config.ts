@@ -81,6 +81,10 @@ export function readConfig(configPath: string): DemoConfig {
     
     // Then interpolate config references
     config = interpolateConfigReferences(config);
+
+    // check if any of the steps is "pause" and has "transition"
+    config.hasTransitions = config.steps.some(step => step.type === 'pauseRecording' && step.transition);
+    console.log('Config has transitions:', config.hasTransitions);
     
     return config;
   } catch (error) {

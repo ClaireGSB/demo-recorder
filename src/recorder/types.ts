@@ -1,4 +1,5 @@
 // src/recorder/types.ts
+import type { BaseTransitionOptions } from './transitions/types';
 
 export interface ViewportDimensions {
   width: number;
@@ -6,6 +7,15 @@ export interface ViewportDimensions {
 }
 
 export interface RecordingOptions {
+  fps: number;
+  quality: number;
+  videoCrf: number;
+  videoCodec: string;
+  videoPreset: string;
+  outputPath: string;
+}
+
+export interface RecordingSettings {
   fps: number;
   quality: number;
   videoCrf: number;
@@ -26,6 +36,7 @@ export interface Step {
   duration?: number;
   path?: string;
   typeConfig?: TypeConfig;
+  transition?: BaseTransitionOptions; 
 }
 
 export type StepType =
@@ -69,6 +80,7 @@ export interface DemoConfig {
   auth?: AuthConfig;
   recording: RecordingConfig;
   steps: Step[];
+  hasTransitions: boolean;
 }
 
 export interface Frame {
@@ -107,4 +119,14 @@ export interface FFmpegConfig {
   crf: number;
   pixelFormat: string;
   extraOptions?: string[];
+}
+
+export interface RecordingSegment {
+  path: string;
+  hasTransition: boolean;
+  transition?: BaseTransitionOptions;
+  startTime: number;    // add these required properties
+  frameCount: number;   // from Segment interface
+  width: number;
+  height: number;
 }

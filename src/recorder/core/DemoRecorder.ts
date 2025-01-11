@@ -6,8 +6,11 @@ import { InputActions } from '../../actions/InputActions';
 import { SelectActions } from '../../actions/SelectActions';
 import { ScreenRecorder } from './ScreenRecorder';
 import { delay } from '../../utils/delay';
-import { DemoConfig } from '../types';
+import { DemoConfig, RecordingOptions } from '../types';
 import { MetricsLogger } from '../metrics/MetricsLogger';
+import { DEFAULT_RECORDING_SETTINGS } from '../config/RecorderConfig';
+
+
 
 export class DemoRecorder {
   private browser?: puppeteer.Browser;
@@ -28,7 +31,14 @@ export class DemoRecorder {
     this.page = await this.browser.newPage();
 
     this.mouseActions = MouseActions.getInstance(this.page);
-    this.recorder = new ScreenRecorder(this.page);
+
+    const recordingOptions: RecordingOptions = {
+      ...DEFAULT_RECORDING_SETTINGS,
+      outputPath: this.config.recording.output
+    };
+
+    this.recorder = new ScreenRecorder(this.page, recordingOptions);
+
     this.inputActions = new InputActions(this.page);
     this.selectActions = new SelectActions(this.page);
   }
@@ -97,7 +107,9 @@ export class DemoRecorder {
 
         case 'pauseRecording':
           if (!this.recorder) throw new Error('Recorder not initialized');
-          await this.recorder.pause();
+          MetricsLogger.logInfo(`Pausing recording${step.transition ? ` with ${step.transition.type} transition` : ''}`);
+          // Pass the transition configuration to pause
+          await this.recorder.pause(step.transition);
           break;
 
         case 'resumeRecording':
@@ -118,9 +130,9 @@ export class DemoRecorder {
     try {
       await this.initialize();
       if (!this.page || !this.recorder) throw new Error('Failed to initialize');
-      
+
       const startTime = Date.now();
-      
+
       for (const step of this.config.steps) {
         await this.executeStep(step);
       }
