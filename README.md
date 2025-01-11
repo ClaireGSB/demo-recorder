@@ -4,16 +4,23 @@ A tool for automatically recording web application demos using Puppeteer. Create
 
 ## Features
 
-- Record automated demos of web applications
-- Smooth mouse movements with visual cursor indicator
-- Support for various interactions:
-  - Clicking elements
-  - Typing in input fields and textareas
-  - Selecting from dropdowns
-  - Navigation
-  - Timed waits
-- Configurable recording settings
-- TOML-based configuration
+-   **Configurable Recording Steps:** Define a series of browser actions (navigation, input, clicks, etc.) in a TOML configuration file.
+-   **Smooth Mouse Movements:** Utilizes a custom mouse helper to simulate natural cursor movements.
+-   **Flexible Input Handling:** Supports typing text into input fields and textareas, with configurable typing speeds.
+-   **Select Element Support:**  Handles dropdown selections by selector or text.
+-  **Pause and Resume:** Allows recording to be paused and resumed with the option of applying transitions between segments.
+-   **Transitions:** Supports fade and dissolve transitions between recording segments using FFmpeg, customizable by duration and options.
+
+## Dependencies
+
+-   **mouse-helper:** Visualizes mouse movements during recording.
+-   **puppeteer:**  Provides high-level API to control headless Chrome or Chromium over the DevTools Protocol.
+-   **toml:**  For parsing TOML configuration files.
+
+## Prerequisites
+-   **Node.js:** Ensure you have Node.js (v18 or higher) and npm/yarn installed.
+-   **FFmpeg:**  FFmpeg must be installed and available in your system's PATH for video encoding.
+
 
 ## Installation
 
@@ -30,6 +37,8 @@ npm install
 
 3. Add the tool to your shell configuration (`~/.bashrc` or `~/.zshrc`):
 ```bash
+alias demo-init='function _demo_init() { npm run --prefix /absolute/path/to/demo-recorder init "$(pwd)"; }; _demo_init'
+
 alias demo-record='function _demo_record() { npm run --prefix /absolute/path/to/demo-recorder start "$(pwd)"; }; _demo_record'
 ```
 
@@ -42,7 +51,7 @@ source ~/.bashrc  # or source ~/.zshrc
 
 ## Usage
 
-1. Create a `.demo-recorder.toml` file in your project directory:
+1. Create a `.demo-recorder.toml` file in your project directory  or run yarn demo-init to create a template file:
 ```bash
 cp /path/to/demo-recorder/.demo-recorder.template.toml /your/project/.demo-recorder.toml
 ```
@@ -61,7 +70,7 @@ Here's a complete example of a `.demo-recorder.toml` file:
 ```toml
 # Project configuration
 [project]
-name = "my-nuxt-app"
+name = "My-app"
 baseUrl = "http://localhost:3000"
 
 [project.viewport]
@@ -92,11 +101,14 @@ duration = 1000
 type = "input"
 selector = "[type='email']"
 value = "${auth.email}"
+# Uses default fast typing since no typeConfig specified
+
 
 [[steps]]
 type = "input"
 selector = "[type='password']"
 value = "${auth.password}"
+typeConfig = { slowType = true, typeDelay = 150 }  # Override for slow typing
 
 [[steps]]
 type = "click"
@@ -104,7 +116,7 @@ selector = "[type='submit']"
 
 [[steps]]
 type = "wait"
-duration = 2000
+duration = 1000
 
 [[steps]]
 type = "select"
@@ -123,69 +135,57 @@ value = "Include specific examples and use cases"
 ```
 
 ## Step Types
+*### navigate
+- **description**: Navigates to a specified path.
 
-### Navigate
-```toml
-[[steps]]
-type = "navigate"
-path = "/some-path"  # Will be appended to baseUrl
-```
+### input
+- **description**: Types text into a selector.
+- **selector**: CSS selector of the input.
+- **value**: The text to type.
+- **typeConfig**: (Optional) Overrides the default typing configurations.
+- **slowType**
+  - **description**: If true, will type slowly using the delay in `typeDelay`.
+- **typeDelay**
+  - **description**: How much to wait in milliseconds between each typed character when using `slowType`.
 
-### Input
-```toml
-[[steps]]
-type = "input"
-selector = "[data-test='field-name']"
-value = "Text to type"
-```
+### select
+- **description**: Selects an option from a dropdown.
+- **selector**: CSS selector of the select element.
+- **option**: CSS selector of the option to select.
 
-### Select
-```toml
-[[steps]]
-type = "select"
-selector = "[data-test='dropdown']"
-option = "[data-test='option-value']"  # Selector for the option to click
-```
+### click
+- **description**: Clicks on an element by selector.
 
-### Click
-```toml
-[[steps]]
-type = "click"
-selector = "[data-test='button']"
-```
+### wait
+- **description**: Waits for a specified duration in milliseconds.
 
-### Wait
-```toml
-[[steps]]
-type = "wait"
-duration = 2000  # milliseconds
-```
+### scrollDown
+- **description**: Scrolls down a specific number of pixels over a duration.
+- **pixels**: Number of pixels to scroll down.
+- **duration**: (Optional) Duration of the scroll animation (ms).
 
-### Pause
+### startRecording
+- **description**: Starts recording the screen.
 
-the transition is optional. 
-Supported transitions are "fade" and "dissolve".
-```toml
-[[steps]]
-type = "pause"
-transition = { type = "fade", duration = 500, options = { color = "#FFFFFF" } }
-```
+### stopRecording
+- **description**: Stops recording and processes the video.
+
+### pauseRecording
+- **description**: Pauses the recording, optionally with a transition.
+- **transition**
+  - **description**: (Optional) Configuration for the transition effect.
+  - **type**: `fade` or `dissolve`.
+  - **duration**: Duration of the transition in milliseconds.
+  - **options**
+    - **fade**
+      - **color**: e.g. `"#FFFFFF"`
+    - **dissolve**
+      - **strength**: A numeric value for the strength of the effect.
+
+### resumeRecording
+- **description**: Resumes the recording.
 
 
-## Environment Variables
-
-Sensitive data like credentials should be provided through environment variables. Create a `.env` file in your project:
-
-```bash
-DEMO_USER_EMAIL=demo@example.com
-DEMO_USER_PASSWORD=your-password
-```
-
-## Requirements
-
-- Node.js 16+
-- FFmpeg (for video recording)
-- A running web application to record
 
 ## Troubleshooting
 
