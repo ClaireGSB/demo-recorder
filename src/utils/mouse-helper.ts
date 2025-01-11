@@ -41,6 +41,11 @@ export class MouseHelper {
       ${this.mouseHelperContent}
       
       function initMouseHelper() {
+        console.log('InitMouseHelper called, state:', {
+          hasHelper: typeof window['mouse-helper'] === 'function',
+          readyState: document.readyState
+        });
+
         if (typeof window['mouse-helper'] === 'function') {
           try {
             window['mouse-helper']();
@@ -53,13 +58,18 @@ export class MouseHelper {
 
       // Initialize on page load
       if (document.readyState === 'complete') {
+        console.log('Document ready, initializing immediately');
         initMouseHelper();
       } else {
+        console.log('Document not ready, waiting for load');
         window.addEventListener('load', initMouseHelper);
       }
 
       // Backup initialization after a short delay
-      setTimeout(initMouseHelper, 500);
+      setTimeout(() => {
+        console.log('Backup initialization triggered');
+        initMouseHelper();
+      }, 500);
     `);
   }
 

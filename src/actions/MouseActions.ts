@@ -46,11 +46,29 @@ export class MouseActions {
         minDelay = 5,
         maxDelay = 15,
     } = options;
+
+    console.log('Movement Coordinate Debug:', {
+      startPosition: {
+          x: this.lastKnownPosition.x,
+          y: this.lastKnownPosition.y,
+          scrollOffset: this.scrollOffset
+      },
+      targetPosition: {
+          x: targetX,
+          y: targetY,
+          adjustedY: targetY - this.scrollOffset
+      },
+      viewport: await this.page.evaluate(() => ({
+          scrollY: window.scrollY,
+          clientHeight: window.innerHeight
+      }))
+  });
   
     console.log('Starting mouse movement:');
     console.log('Current stored position:', this.lastKnownPosition);
     console.log('Current scroll offset:', this.scrollOffset);
     console.log('Target position:', { x: targetX, y: targetY });
+    
   
     const distance = Math.sqrt(
       Math.pow(targetX - this.lastKnownPosition.x, 2) + 
@@ -80,6 +98,18 @@ export class MouseActions {
     await this.page.mouse.move(targetX, targetY);
     this.lastKnownPosition = { x: targetX, y: targetY };
     console.log('Final position stored as:', this.lastKnownPosition);
+
+    const helperPosition = await this.page.evaluate(() => {
+      const helper = document.querySelector('.mouse-helper');
+      if (!helper) return null;
+      const rect = helper.getBoundingClientRect();
+      return {
+        visual: { top: rect.top, left: rect.left },
+        style: helper.getAttribute('style'),
+        scroll: window.scrollY
+      };
+    });
+    console.log('Mouse Helper State:', helperPosition);
   }
 
   async click(selector: string): Promise<boolean> {
@@ -89,6 +119,27 @@ export class MouseActions {
     }
     
     try {
+      console.log(`Pre-movement Coordinates Debug:`, {
+        viewport: await this.page.evaluate(() => ({
+            scrollY: window.scrollY,
+            clientHeight: window.innerHeight
+        })),
+        elementBox: await this.page.evaluate((sel) => {
+            const el = document.querySelector(sel);
+            if (!el) return null;
+            const rect = el.getBoundingClientRect();
+            return {
+                viewport: { top: rect.top, bottom: rect.bottom },
+                // Cast to HTMLElement to access offsetTop
+                offset: el instanceof HTMLElement ? {
+                    top: el.offsetTop,
+                    bottom: el.offsetTop + el.offsetHeight
+                } : null
+            };
+        }, selector),
+        currentMousePosition: this.lastKnownPosition,
+        scrollOffset: this.scrollOffset
+    });
       this.isMoving = true;
       console.log(`Attempting to click selector: ${selector}`);
       console.log('Current stored position:', this.lastKnownPosition);
@@ -136,12 +187,44 @@ export class MouseActions {
       console.log('Already moving, waiting 100ms before scroll');
       await delay(100);
     }
+
+    const helperStateBefore = await this.page.evaluate(() => {
+      const helper = document.querySelector('.mouse-helper');
+      if (helper) {
+        const rect = helper.getBoundingClientRect();
+        return {
+          top: rect.top,
+          left: rect.left,
+          style: helper.getAttribute('style')
+        };
+      }
+      return null;
+    });
+    console.log('Mouse helper state before scroll:', helperStateBefore);
+  
     
     try {
       this.isMoving = true;
       console.log(`Starting smooth scroll: ${pixels}px over ${duration}ms`);
       const steps = Math.floor(duration / 16);
-      const pixelsPerStep = pixels / steps;
+      // pixels per step need to be integer. round down to avoid scrolling too far
+      const pixelsPerStep = Math.floor(pixels / steps);
+      // the remainder pixels to scroll
+      const remainder = pixels % steps;      
+
+      const viewportSize = await this.page.evaluate(() => ({
+        scrollY: window.scrollY,
+        clientHeight: document.documentElement.clientHeight,
+        scrollHeight: document.documentElement.scrollHeight
+      }));
+      console.log('Viewport state before scroll:', viewportSize);
+      console.log('Scroll Debug:', {
+        beforeScroll: Date.now(),
+        viewport: await this.page.evaluate(() => ({
+          scrollY: window.scrollY,
+          ready: document.readyState
+        }))
+      });
       
       // Track scroll offset, but don't adjust mouse position
       this.scrollOffset += pixels;
@@ -152,10 +235,54 @@ export class MouseActions {
         }, pixelsPerStep);
         await delay(16);
       }
+      // Scroll the remainder pixels
+      await this.page.evaluate((y) => {
+        window.scrollBy(0, y);
+      }, remainder);
+
+      
+      const viewportSize2 = await this.page.evaluate(() => ({
+        scrollY: window.scrollY,
+        clientHeight: document.documentElement.clientHeight,
+        scrollHeight: document.documentElement.scrollHeight
+      }));
+      console.log('Viewport state before scroll:', viewportSize2);
       
       console.log('Scroll completed. New offset:', this.scrollOffset);
     } finally {
+      
       this.isMoving = false;
+      const helperStateAfter = await this.page.evaluate(() => {
+        const helper = document.querySelector('.mouse-helper');
+        if (helper) {
+          const rect = helper.getBoundingClientRect();
+          return {
+            top: rect.top,
+            left: rect.left,
+            style: helper.getAttribute('style')
+          };
+        }
+        return null;
+      });
+      console.log('Mouse helper state after scroll:', helperStateAfter);
+      console.log('Scroll Debug:', {
+        beforeScroll: Date.now(),
+        viewport: await this.page.evaluate(() => ({
+          scrollY: window.scrollY,
+          ready: document.readyState
+        }))
+      });
+      const helperPosition = await this.page.evaluate(() => {
+        const helper = document.querySelector('.mouse-helper');
+        if (!helper) return null;
+        const rect = helper.getBoundingClientRect();
+        return {
+          visual: { top: rect.top, left: rect.left },
+          style: helper.getAttribute('style'),
+          scroll: window.scrollY
+        };
+      });
+      console.log('Mouse Helper State:', helperPosition);
     }
   }
 }

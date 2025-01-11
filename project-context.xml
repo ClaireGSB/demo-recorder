@@ -249,9 +249,8 @@ export class MouseActions {
         return false;
       }
 
-      // Adjust the target position based on scroll
       const targetX = box.x + box.width / 2;
-      const targetY = box.y + box.height / 2 ;
+      const targetY = box.y + box.height / 2;
 
       console.log('Element bounding box:', box);
       console.log('Beginning movement to element center:', { targetX, targetY });
@@ -279,12 +278,34 @@ export class MouseActions {
       console.log('Already moving, waiting 100ms before scroll');
       await delay(100);
     }
+
+    const helperStateBefore = await this.page.evaluate(() => {
+      const helper = document.querySelector('.mouse-helper');
+      if (helper) {
+        const rect = helper.getBoundingClientRect();
+        return {
+          top: rect.top,
+          left: rect.left,
+          style: helper.getAttribute('style')
+        };
+      }
+      return null;
+    });
+    console.log('Mouse helper state before scroll:', helperStateBefore);
+  
     
     try {
       this.isMoving = true;
       console.log(`Starting smooth scroll: ${pixels}px over ${duration}ms`);
       const steps = Math.floor(duration / 16);
       const pixelsPerStep = pixels / steps;
+
+      const viewportSize = await this.page.evaluate(() => ({
+        scrollY: window.scrollY,
+        clientHeight: document.documentElement.clientHeight,
+        scrollHeight: document.documentElement.scrollHeight
+      }));
+      console.log('Viewport state before scroll:', viewportSize);
       
       // Track scroll offset, but don't adjust mouse position
       this.scrollOffset += pixels;
@@ -295,10 +316,32 @@ export class MouseActions {
         }, pixelsPerStep);
         await delay(16);
       }
+
+      
+      const viewportSize2 = await this.page.evaluate(() => ({
+        scrollY: window.scrollY,
+        clientHeight: document.documentElement.clientHeight,
+        scrollHeight: document.documentElement.scrollHeight
+      }));
+      console.log('Viewport state before scroll:', viewportSize2);
       
       console.log('Scroll completed. New offset:', this.scrollOffset);
     } finally {
+      
       this.isMoving = false;
+      const helperStateAfter = await this.page.evaluate(() => {
+        const helper = document.querySelector('.mouse-helper');
+        if (helper) {
+          const rect = helper.getBoundingClientRect();
+          return {
+            top: rect.top,
+            left: rect.left,
+            style: helper.getAttribute('style')
+          };
+        }
+        return null;
+      });
+      console.log('Mouse helper state after scroll:', helperStateAfter);
     }
   }
 }]]></content>
@@ -1165,6 +1208,11 @@ export class MouseHelper {
       ${this.mouseHelperContent}
       
       function initMouseHelper() {
+        console.log('InitMouseHelper called, state:', {
+          hasHelper: typeof window['mouse-helper'] === 'function',
+          readyState: document.readyState
+        });
+
         if (typeof window['mouse-helper'] === 'function') {
           try {
             window['mouse-helper']();
@@ -1177,13 +1225,18 @@ export class MouseHelper {
 
       // Initialize on page load
       if (document.readyState === 'complete') {
+        console.log('Document ready, initializing immediately');
         initMouseHelper();
       } else {
+        console.log('Document not ready, waiting for load');
         window.addEventListener('load', initMouseHelper);
       }
 
       // Backup initialization after a short delay
-      setTimeout(initMouseHelper, 500);
+      setTimeout(() => {
+        console.log('Backup initialization triggered');
+        initMouseHelper();
+      }, 500);
     `);
   }
 
