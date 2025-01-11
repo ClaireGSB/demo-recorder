@@ -24,6 +24,9 @@ class CustomScreenRecorder {
   private queueSizeHistory: number[] = [];
   private lastMetricsLog = Date.now();
   private METRICS_INTERVAL = 5000; // Log every 5 seconds
+  private lastFrameEncoded = Date.now();
+  private encodingTimes: number[] = [];
+  private encodedFrameCount: number = 0;  // Add this to track encoded frames
 
   public getStatus() {
     return {
@@ -192,6 +195,27 @@ class CustomScreenRecorder {
     }
   }
 
+  // private async processFrameQueue() {
+  //   if (!this.isRecording || this.isPaused || this.frameQueue.length === 0) {
+  //     return;
+  //   }
+
+  //   const frame = this.frameQueue.shift();
+  //   if (!frame) return;
+
+  //   const now = Date.now();
+  //   if (this.ffmpeg && this.ffmpeg.stdin.writable) {
+  //     this.ffmpeg.stdin.write(frame.data);
+  //     this.encodedFrameCount++;  // Increment when we actually write to ffmpeg
+  //     this.lastFrameTime = now;
+      
+  //     const encodingTime = now - frame.timestamp;
+  //     this.encodingTimes.push(encodingTime);
+      
+  //     this.logPerformanceMetrics();
+  //   }
+  // }
+
   private async processFrameQueue() {
     if (!this.isRecording || this.isPaused || this.frameQueue.length === 0) {
       return;
@@ -208,6 +232,7 @@ class CustomScreenRecorder {
     }
 
     // Now we can safely process the frame
+    const encodingStart = Date.now();
     this.frameQueue.shift();
 
     if (timeSinceLastFrame < this.targetFrameInterval) {
@@ -216,7 +241,10 @@ class CustomScreenRecorder {
 
     if (this.ffmpeg && this.ffmpeg.stdin.writable) {
       this.ffmpeg.stdin.write(frame.data);
+      this.encodedFrameCount++;  
       this.frameCount++;
+      const encodingTime = encodingStart - frame.timestamp;
+      this.encodingTimes.push(encodingTime);
       this.lastFrameTime = Date.now();
 
       // Collect metrics
@@ -247,22 +275,29 @@ class CustomScreenRecorder {
     const now = Date.now();
     if (now - this.lastMetricsLog < this.METRICS_INTERVAL) return;
 
-    // Calculate frame timing statistics
+    const avgEncodingTime = this.encodingTimes.reduce((a, b) => a + b, 0) / this.encodingTimes.length;
+    const maxEncodingTime = Math.max(...this.encodingTimes);
+    const realFPS = 1000 / avgEncodingTime;
+
     const avgFrameTime = this.frameTimings.reduce((a, b) => a + b, 0) / this.frameTimings.length;
     const maxFrameTime = Math.max(...this.frameTimings);
     const avgQueueSize = this.queueSizeHistory.reduce((a, b) => a + b, 0) / this.queueSizeHistory.length;
 
+
     console.log('Recording Performance Metrics:');
+    console.log(`- Average encoding time: ${avgEncodingTime.toFixed(2)}ms`);
+    console.log(`- Max encoding time: ${maxEncodingTime.toFixed(2)}ms`);
     console.log(`- Average frame processing time: ${avgFrameTime.toFixed(2)}ms`);
     console.log(`- Max frame processing time: ${maxFrameTime.toFixed(2)}ms`);
-    console.log(`- Current queue size: ${this.frameQueue.length}`);
     console.log(`- Average queue size: ${avgQueueSize.toFixed(2)}`);
-    console.log(`- Frames captured: ${this.frameCount}`);
-    console.log(`- Theoretical FPS: ${(1000 / avgFrameTime).toFixed(2)}`);
+    console.log(`- Current queue size: ${this.frameQueue.length}`);
+    console.log(`- Actual FPS: ${realFPS.toFixed(2)}`);
+    console.log(`- Total frames received: ${this.frameCount}`);
+    console.log(`- Frames encoded: ${this.encodedFrameCount}`);
+    console.log(`- Encoding speed: ${(realFPS / 30).toFixed(2)}x`);  // Relative to target 30fps
 
-    // Reset for next interval
-    this.frameTimings = [];
-    this.queueSizeHistory = [];
+    // Reset timing arrays but keep counts
+    this.encodingTimes = [];
     this.lastMetricsLog = now;
   }
 
