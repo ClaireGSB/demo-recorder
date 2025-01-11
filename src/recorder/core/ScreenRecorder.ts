@@ -14,8 +14,10 @@ import { FrameQueue } from '../queue/FrameQueue';
 import { QueueProcessor } from '../queue/QueueProcessor';
 import { MetricsCollector } from '../metrics/PerformanceMetrics';
 import { MetricsLogger } from '../metrics/MetricsLogger';
-import type { Frame, RecorderStatus, RecordingOptions, RecordingSegment, TransitionConfig } from '../types';
+import type { Frame, RecorderStatus, RecordingOptions, RecordingSegment } from '../types';
 import { TransitionManager } from '../transitions/TransitionManager';
+import type { BaseTransitionOptions } from '../transitions/types';
+
 
 export class ScreenRecorder {
   private ffmpeg: any;
@@ -194,7 +196,7 @@ export class ScreenRecorder {
 
 
 
-  async pause(transition?: TransitionConfig): Promise<void> {
+  async pause(transition?: BaseTransitionOptions): Promise<void> {
     if (!this.isRecording || this.isPaused) return;
 
     if (this.client) {
