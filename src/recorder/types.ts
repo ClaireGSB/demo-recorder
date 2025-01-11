@@ -80,6 +80,7 @@ export interface DemoConfig {
   auth?: AuthConfig;
   recording: RecordingConfig;
   steps: Step[];
+  hasTransitions: boolean;
 }
 
 export interface Frame {

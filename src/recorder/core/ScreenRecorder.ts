@@ -156,37 +156,49 @@ export class ScreenRecorder {
       }
     }
 
-    console.log('Trying to combine segments...');
+    console.log('Starting final file processing...');
     try {
+
+      // Add final segment
+      if (this.currentSegmentPath) {
+        this.segments.push({
+          path: this.currentSegmentPath,
+          hasTransition: false,
+          startTime: this.pausedTime - this.metricsCollector.getTotalFrames() * (1000 / this.options.fps),
+          frameCount: this.metricsCollector.getTotalFrames(),
+          width: this.page.viewport()?.width || 1920,
+          height: this.page.viewport()?.height || 1080
+        });
+        MetricsLogger.logInfo(`Added final segment: ${this.currentSegmentPath}`);
+      }
+
+      // Process segments
       if (this.segments.length > 0) {
         MetricsLogger.logInfo(`Combining ${this.segments.length} segments with transitions...`);
-
-        // Add final segment
-        if (this.currentSegmentPath) {
-          this.segments.push({
-            path: this.currentSegmentPath,
-            hasTransition: false,
-            startTime: this.pausedTime - this.metricsCollector.getTotalFrames() * (1000 / this.options.fps),
-            frameCount: this.metricsCollector.getTotalFrames(),
-            width: this.page.viewport()?.width || 1920,  // default if viewport not set
-            height: this.page.viewport()?.height || 1080
-          });
-          MetricsLogger.logInfo(`Added final segment: ${this.currentSegmentPath}`);
-        }
-
         const transitionManager = new TransitionManager();
-        await this.combineSegments(transitionManager);
+        await this.createFinalFile(transitionManager);
+      } else {
+        MetricsLogger.logWarning('No segments to process');
+      }
 
-        // Cleanup temp files
-        this.segments.forEach(segment => {
-          fs.unlinkSync(segment.path);
-          MetricsLogger.logInfo(`Deleted temp segment: ${segment.path}`);
-        });
-
-        if (fs.existsSync(this.tempDir)) {
-          fs.rmdirSync(this.tempDir);
-          MetricsLogger.logInfo(`Removed temp directory: ${this.tempDir}`);
+      // Cleanup temp files and .DS_Store
+      if (fs.existsSync(this.tempDir)) {
+        const files = fs.readdirSync(this.tempDir);
+        for (const file of files) {
+          const filePath = path.join(this.tempDir, file);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            MetricsLogger.logInfo(`Deleted temp file: ${filePath}`);
+          }
         }
+
+        try {
+          fs.rmdirSync(this.tempDir);
+          MetricsLogger.logInfo('Removed temp directory');
+        } catch (error) {
+          MetricsLogger.logWarning(`Note: Could not remove temp directory: ${(error as Error).message}`);
+        }
+
       }
     } catch (error) {
       MetricsLogger.logError(error as Error, 'Segment processing');
@@ -272,29 +284,173 @@ export class ScreenRecorder {
     };
   }
 
-  private async combineSegments(transitionManager: TransitionManager): Promise<void> {
-    MetricsLogger.logInfo(`Starting segment combination with ${this.segments.length} segments`);
+  private async copySegmentToOutput(segmentPath: string, outputPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const ffmpegArgs = [
+        '-i', segmentPath,
+        '-c', 'copy',  // Use stream copy for faster processing
+        '-y',  // Overwrite output file if it exists
+        outputPath
+      ];
+  
+      MetricsLogger.logInfo('FFmpeg copy command:');
+      MetricsLogger.logInfo('ffmpeg ' + ffmpegArgs.join(' '));
+  
+      const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+  
+      ffmpeg.stderr.on('data', (data) => {
+        MetricsLogger.logInfo(`FFmpeg Copy: ${data.toString()}`);
+      });
+  
+      ffmpeg.on('close', (code) => {
+        if (code === 0) {
+          MetricsLogger.logInfo('Copy completed successfully');
+          resolve();
+        } else {
+          reject(new Error(`FFmpeg copy process exited with code ${code}`));
+        }
+      });
+  
+      ffmpeg.on('error', (error) => {
+        MetricsLogger.logError(error, 'FFmpeg copy process error');
+        reject(error);
+      });
+    });
+  }
+  
 
-    for (let i = 0; i < this.segments.length - 1; i++) {
-      const currentSegment = this.segments[i];
-      const nextSegment = this.segments[i + 1];
-
-      MetricsLogger.logInfo(`Processing segments ${i} and ${i + 1}:`);
-      MetricsLogger.logInfo(`Current segment: ${JSON.stringify(currentSegment, null, 2)}`);
-      MetricsLogger.logInfo(`Next segment: ${JSON.stringify(nextSegment, null, 2)}`);
-
-      if (currentSegment.hasTransition && currentSegment.transition) {
-        MetricsLogger.logInfo(`Applying ${currentSegment.transition.type} transition`);
-        await transitionManager.applyTransition(
-          [currentSegment, nextSegment],
-          this.options.outputPath,
-          currentSegment.transition
-        );
-      } else {
-        MetricsLogger.logInfo('No transition specified between segments');
-      }
+  private async concatenateSegments(segments: RecordingSegment[], outputPath: string): Promise<void> {
+    // Ensure temp directory exists
+    if (!fs.existsSync(this.tempDir)) {
+      fs.mkdirSync(this.tempDir, { recursive: true });
     }
 
-    MetricsLogger.logInfo('Finished combining segments');
+    // Create a temporary file listing all segments to concatenate
+    const concatFilePath = path.join(this.tempDir, 'concat_list.txt');
+
+    // Use absolute paths to avoid any path resolution issues
+    const fileContent = segments.map(seg => `file '${path.resolve(seg.path)}'`).join('\n');
+    fs.writeFileSync(concatFilePath, fileContent);
+
+    MetricsLogger.logInfo(`Created concat file at ${concatFilePath}`);
+    MetricsLogger.logInfo(`Concat file contents:\n${fileContent}`);
+
+    return new Promise((resolve, reject) => {
+      const ffmpegArgs = [
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', concatFilePath,
+        '-c', 'copy',  // Use stream copy for faster processing
+        '-y',  // Overwrite output file if it exists
+        outputPath
+      ];
+
+      MetricsLogger.logInfo('FFmpeg concatenation command:');
+      MetricsLogger.logInfo('ffmpeg ' + ffmpegArgs.join(' '));
+
+      const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+
+      ffmpeg.stderr.on('data', (data) => {
+        MetricsLogger.logInfo(`FFmpeg Concatenation: ${data.toString()}`);
+      });
+
+      ffmpeg.on('close', (code) => {
+        // Clean up the temporary concat list file
+        if (fs.existsSync(concatFilePath)) {
+          fs.unlinkSync(concatFilePath);
+          MetricsLogger.logInfo(`Cleaned up concat file: ${concatFilePath}`);
+        }
+
+        if (code === 0) {
+          MetricsLogger.logInfo('Concatenation completed successfully');
+          resolve();
+        } else {
+          reject(new Error(`FFmpeg concatenation process exited with code ${code}`));
+        }
+      });
+
+      ffmpeg.on('error', (error) => {
+        if (fs.existsSync(concatFilePath)) {
+          fs.unlinkSync(concatFilePath);
+          MetricsLogger.logInfo(`Cleaned up concat file after error: ${concatFilePath}`);
+        }
+        MetricsLogger.logError(error, 'FFmpeg concatenation process error');
+        reject(error);
+      });
+    });
+  }
+
+  private async createFinalFile(transitionManager: TransitionManager): Promise<void> {
+    MetricsLogger.logInfo(`Starting segment combination with ${this.segments.length} segments`);
+
+    // Handle single segment case
+    if (this.segments.length === 1) {
+      MetricsLogger.logInfo('Only one segment found, copying to output');
+      await this.copySegmentToOutput(this.segments[0].path, this.options.outputPath);
+      return;
+    }
+
+    // Create a temporary directory for intermediate files
+    const intermediateDir = path.join(this.tempDir, 'intermediate');
+    if (!fs.existsSync(intermediateDir)) {
+      fs.mkdirSync(intermediateDir, { recursive: true });
+    }
+
+    try {
+      let currentOutput = path.join(intermediateDir, 'output_0.mp4');
+      let segmentsToConcat: RecordingSegment[] = [this.segments[0]]; // Start with first segment
+
+      for (let i = 0; i < this.segments.length - 1; i++) {
+        const currentSegment = this.segments[i];
+        const nextSegment = this.segments[i + 1];
+
+        if (currentSegment.hasTransition && currentSegment.transition) {
+          // If we have accumulated segments to concatenate, do it first
+          if (segmentsToConcat.length > 1) {
+            const tempOutput = path.join(intermediateDir, `concat_${i}.mp4`);
+            await this.concatenateSegments(segmentsToConcat, tempOutput);
+            segmentsToConcat = [{ ...currentSegment, path: tempOutput }];
+          }
+
+          // Apply transition
+          MetricsLogger.logInfo(`Applying ${currentSegment.transition.type} transition`);
+          currentOutput = path.join(intermediateDir, `output_${i + 1}.mp4`);
+          await transitionManager.applyTransition(
+            [segmentsToConcat[0], nextSegment],
+            currentOutput,
+            currentSegment.transition
+          );
+
+          // Start new segment collection with the output
+          segmentsToConcat = [{
+            ...nextSegment,
+            path: currentOutput
+          }];
+        } else {
+          segmentsToConcat.push(nextSegment);
+        }
+      }
+
+      // Handle any remaining segments that need concatenation
+      if (segmentsToConcat.length > 0) {
+        await this.concatenateSegments(segmentsToConcat, this.options.outputPath);
+      }
+
+      MetricsLogger.logInfo('Finished combining segments');
+    } finally {
+      // Clean up intermediate files
+      if (fs.existsSync(intermediateDir)) {
+        const files = fs.readdirSync(intermediateDir);
+        for (const file of files) {
+          const filePath = path.join(intermediateDir, file);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            MetricsLogger.logInfo(`Cleaned up intermediate file: ${filePath}`);
+          }
+        }
+        fs.rmdirSync(intermediateDir);
+        MetricsLogger.logInfo('Cleaned up intermediate directory');
+      }
+    }
   }
 }

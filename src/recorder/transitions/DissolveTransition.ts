@@ -8,7 +8,7 @@ export class DissolveTransition extends BaseTransition<DissolveTransitionOptions
     durationInSeconds: number,
     options?: NonNullable<DissolveTransitionOptions['options']>
   ): string {
-    // const strength = options?.strength || 1;
+    const strength = options?.strength || 1;
     return `[0:v][1:v]xfade=transition=dissolve:duration=${durationInSeconds}:offset=${fadeStartTime}[outv]`;
   }
 }
