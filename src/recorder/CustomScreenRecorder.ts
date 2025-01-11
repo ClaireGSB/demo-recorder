@@ -63,24 +63,43 @@ class CustomScreenRecorder {
     this.isRecording = true;
     this.isPaused = false;
 
+    // this.ffmpeg = spawn('ffmpeg', [
+    //   '-y',
+    //   '-f', 'image2pipe',
+    //   '-r', `${this.options.fps}`,
+    //   '-i', '-',
+    //   '-c:v', this.options.videoCodec,
+    //   '-preset', 'ultrafast', // Changed from ultrafast for better quality
+    //   // '-crf', '23',
+    //   '-tune', 'zerolatency',
+    //   '-maxrate', '4M', // Increased for better quality
+    //   '-bufsize', '16M', // Increased buffer size
+    //   '-pix_fmt', 'yuv420p',
+    //   '-profile:v', 'baseline', // Changed from high
+    //   '-level', '3.0',
+    //   '-x264opts', 'no-scenecut', // Prevent keyframe insertion
+    //   '-movflags', '+faststart',
+    //   '-threads', '8',             // Explicit thread count
+    //   '-x264opts', 'threads=8:no-scenecut',  // Thread hints
+    //   outputPath
+    // ]);
+
     this.ffmpeg = spawn('ffmpeg', [
       '-y',
       '-f', 'image2pipe',
       '-r', `${this.options.fps}`,
       '-i', '-',
       '-c:v', this.options.videoCodec,
-      '-preset', 'ultrafast', // Changed from ultrafast for better quality
-      // '-crf', '23',
+      '-preset', 'veryfast', // Changed from ultrafast for better quality
+      '-crf', '23',  // Changed from 18 for better compression
       '-tune', 'zerolatency',
       '-maxrate', '4M', // Increased for better quality
-      '-bufsize', '16M', // Increased buffer size
+      '-bufsize', '8M', // Increased buffer size
       '-pix_fmt', 'yuv420p',
-      '-profile:v', 'baseline', // Changed from high
-      '-level', '3.0',
+      '-profile:v', 'main', // Changed from high
+      '-level', '4.0',
       '-x264opts', 'no-scenecut', // Prevent keyframe insertion
       '-movflags', '+faststart',
-      '-threads', '8',             // Explicit thread count
-      '-x264opts', 'threads=8:no-scenecut',  // Thread hints
       outputPath
     ]);
 
