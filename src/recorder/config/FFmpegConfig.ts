@@ -22,11 +22,12 @@ export const createFFmpegArgs = (
     '-r', `${fps}`,
     '-i', '-',
     '-c:v', config.videoCodec,
-    // '-vsync', 'cfr',
-    // '-g', `${fps}`,
     '-preset', config.videoPreset,
     '-crf', `${config.videoCrf}`,
     '-pix_fmt', 'yuv420p',
+    // the 2 args below may help limit FFMPEG's to fix FPS (vs overload from Chrome screencast)
+    '-vsync', 'cfr',
+    '-g', `${fps}`,
     outputPath
   ];
 };

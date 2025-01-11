@@ -79,7 +79,13 @@ export class ScreenRecorder {
     this.client = await this.page.createCDPSession();
     this.isRecording = true;
     this.isPaused = false;
-    await FrameTrigger.getInstance().initialize(this.page);
+    await FrameTrigger.getInstance().initialize(this.page, this.options.fps);
+
+    // Calculate everyNthFrame based on target fps
+  // const screencastOptions = {
+  //   ...DEFAULT_SCREENCAST_OPTIONS,
+  //   everyNthFrame: Math.max(1, Math.floor(60 / this.options.fps))
+  // };
 
     // Set initial segment path
     this.currentSegmentPath = path.join(this.tempDir, `segment-${Date.now()}.mp4`);
