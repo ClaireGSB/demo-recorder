@@ -7,7 +7,11 @@ export const DEFAULT_RECORDING_OPTIONS: RecordingOptions = {
   quality: 95,
   videoCrf: 17,
   videoCodec: 'libx264',
-  videoPreset: 'veryfast'
+  videoPreset: 'veryfast',
+  viewport: { 
+    width: 1280,
+    height: 800
+  }
 };
 
 export const DEFAULT_SCREENCAST_OPTIONS: ScreencastOptions = {

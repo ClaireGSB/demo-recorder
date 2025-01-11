@@ -6,7 +6,7 @@ import { InputActions } from '../../actions/InputActions';
 import { SelectActions } from '../../actions/SelectActions';
 import { ScreenRecorder } from './ScreenRecorder';
 import { delay } from '../../utils/delay';
-import { DemoConfig } from '../types';
+import type { DemoConfig, RecordingOptions } from '../types';
 import { MetricsLogger } from '../metrics/MetricsLogger';
 
 export class DemoRecorder {
@@ -20,6 +20,16 @@ export class DemoRecorder {
   constructor(private config: DemoConfig) { }
 
   async initialize(): Promise<void> {
+
+    const recordingOptions: RecordingOptions = {
+      fps: this.config.recording.fps,
+      quality: this.config.recording.quality,
+      videoCrf: 17, // Default values
+      videoCodec: 'libx264',
+      videoPreset: 'veryfast',
+      viewport: this.config.project.viewport // From project config
+    };
+
     this.browser = await puppeteer.launch({
       headless: false,
       defaultViewport: this.config.project.viewport
@@ -28,7 +38,7 @@ export class DemoRecorder {
     this.page = await this.browser.newPage();
 
     this.mouseActions = MouseActions.getInstance(this.page);
-    this.recorder = new ScreenRecorder(this.page);
+    this.recorder = new ScreenRecorder(this.page, recordingOptions);
     this.inputActions = new InputActions(this.page);
     this.selectActions = new SelectActions(this.page);
   }

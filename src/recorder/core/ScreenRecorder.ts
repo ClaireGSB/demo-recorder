@@ -15,6 +15,8 @@ import { QueueProcessor } from '../queue/QueueProcessor';
 import { MetricsCollector } from '../metrics/PerformanceMetrics';
 import { MetricsLogger } from '../metrics/MetricsLogger';
 import { Frame, RecorderStatus, RecordingOptions } from '../types';
+import { SegmentManager } from '../segments/SegmentManager';
+
 
 export class ScreenRecorder {
   private ffmpeg: any;
@@ -26,11 +28,13 @@ export class ScreenRecorder {
   private frameQueue: FrameQueue;
   private queueProcessor: QueueProcessor;
   private metricsCollector: MetricsCollector;
+  private segmentManager: SegmentManager;
 
   constructor(
     private page: puppeteer.Page,
     private options: RecordingOptions = DEFAULT_RECORDING_OPTIONS
   ) {
+    this.segmentManager = new SegmentManager(this.options.viewport);
     this.frameQueue = new FrameQueue();
     this.metricsCollector = new MetricsCollector();
     this.queueProcessor = new QueueProcessor(
@@ -44,6 +48,7 @@ export class ScreenRecorder {
     if (!this.ffmpeg?.stdin.writable) return;
 
     const startTime = Date.now();
+    this.segmentManager.incrementFrameCount();
     this.ffmpeg.stdin.write(frame.data);
 
     this.metricsCollector.recordEncodingTime(startTime);
@@ -61,6 +66,8 @@ export class ScreenRecorder {
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
+
+    await this.segmentManager.initialize();
 
     this.client = await this.page.createCDPSession();
     this.isRecording = true;
@@ -132,6 +139,7 @@ export class ScreenRecorder {
         await this.client.detach();
         this.client = null;
         this.isRecording = false;
+        await this.segmentManager.cleanup();
       } catch (error) {
         MetricsLogger.logError(error as Error, 'Stopping recording');
         throw error;
