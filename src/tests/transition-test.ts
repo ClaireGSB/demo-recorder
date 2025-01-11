@@ -10,7 +10,6 @@ async function testTransition() {
     const transitionManager = new TransitionManager();
     const recordingsDir = path.join(__dirname, '..', '..', 'recordings');
 
-    // Define the two videos we want to combine
     const segments: Segment[] = [
       {
         path: path.join(recordingsDir, 'login-flow.mp4'),
@@ -30,15 +29,29 @@ async function testTransition() {
 
     const outputPath = path.join(recordingsDir, 'combined-with-transition.mp4');
 
-    // Configure a half-second fade transition
-    const transitionOptions: TransitionOptions = {
-      type: 'fade',
-      duration: 500
-    };
+    // Test different transitions
+    const transitions: TransitionOptions[] = [
+      {
+        type: 'fade',
+        duration: 500,
+        options: { color: 'white' }
+      },
+      {
+        type: 'dissolve',
+        duration: 750,
+        options: { strength: 1.5 }
+      }
+    ];
 
-    MetricsLogger.logInfo('Starting transition test...');
-    await transitionManager.applyTransition(segments, outputPath, transitionOptions);
-    MetricsLogger.logInfo('Test completed successfully!');
+    for (const transition of transitions) {
+      MetricsLogger.logInfo(`Starting ${transition.type} transition test...`);
+      await transitionManager.applyTransition(
+        segments, 
+        outputPath.replace('.mp4', `-${transition.type}.mp4`),
+        transition
+      );
+      MetricsLogger.logInfo(`${transition.type} test completed successfully!`);
+    }
 
   } catch (error) {
     MetricsLogger.logError(error as Error, 'Transition Test');
