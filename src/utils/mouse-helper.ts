@@ -49,7 +49,7 @@ export class MouseHelper {
     if (!this.mouseHelperContent) {
       await this.loadMouseHelperContent();
     }
-  
+
     // Setup the helper code but don't initialize yet
     await page.evaluateOnNewDocument(`
       window.self = window;
@@ -122,17 +122,17 @@ export class MouseHelper {
 
   private async initialize(page: Page): Promise<void> {
     if (this.initialized) return;
-  
+
     try {
       await this.loadMouseHelperContent();
       await this.initializePage(page);
-  
+
       // NEW: Wait for navigation to complete and page to be stable
-      await page.waitForNavigation({ 
+      await page.waitForNavigation({
         waitUntil: ['networkidle0', 'domcontentloaded'],
         timeout: 30000
-      }).catch(() => {}); // Ignore timeout, page might already be loaded
-  
+      }).catch(() => { }); // Ignore timeout, page might already be loaded
+
       // Try to initialize up to 3 times with increasing delays
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
@@ -140,13 +140,13 @@ export class MouseHelper {
           const success = await page.evaluate(async () => {
             return await window.__initializeMouseHelper();
           });
-  
+
           if (success) {
             console.log('Mouse helper initialized successfully');
             this.initialized = true;
             return;
           }
-  
+
           // NEW: Exponential backoff between attempts
           if (attempt < 2) {
             await delay(Math.pow(2, attempt) * 100); // 100ms, 200ms, 400ms
