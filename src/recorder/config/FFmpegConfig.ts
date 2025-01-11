@@ -12,7 +12,7 @@ export interface FFmpegConfig {
 }
 
 export const createFFmpegArgs = (
-  fps: number, 
+  fps: number,
   config: RecordingOptions,
   outputPath: string
 ): string[] => {

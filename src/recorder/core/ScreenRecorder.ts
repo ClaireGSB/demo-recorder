@@ -4,9 +4,9 @@ import * as puppeteer from 'puppeteer';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
-import {  
+import {
   DEFAULT_RECORDING_OPTIONS,
-  DEFAULT_SCREENCAST_OPTIONS, 
+  DEFAULT_SCREENCAST_OPTIONS,
 } from '../config/RecorderConfig';
 import { createFFmpegArgs } from '../config/FFmpegConfig';
 
@@ -22,7 +22,7 @@ export class ScreenRecorder {
   private isRecording: boolean = false;
   private isPaused: boolean = false;
   private pausedTime: number = 0;
-  
+
   private frameQueue: FrameQueue;
   private queueProcessor: QueueProcessor;
   private metricsCollector: MetricsCollector;
@@ -45,7 +45,7 @@ export class ScreenRecorder {
 
     const startTime = Date.now();
     this.ffmpeg.stdin.write(frame.data);
-    
+
     this.metricsCollector.recordEncodingTime(startTime);
     this.metricsCollector.incrementEncodedFrames();
     this.metricsCollector.recordQueueSize(this.frameQueue.length);
@@ -85,7 +85,7 @@ export class ScreenRecorder {
         }
 
         this.metricsCollector.incrementFrameCounter();
-        
+
         const frameBuffer = Buffer.from(frame.data, 'base64');
         this.frameQueue.push({
           data: frameBuffer,
@@ -104,6 +104,12 @@ export class ScreenRecorder {
 
   async stop(): Promise<void> {
     this.queueProcessor.stop();
+
+    // Log final metrics before stopping
+    const finalMetrics = this.metricsCollector.getMetrics();
+    MetricsLogger.logInfo('=== Final Recording Metrics ===');
+    MetricsLogger.logPerformance(finalMetrics);
+    MetricsLogger.logInfo('=============================');
 
     if (this.client) {
       try {

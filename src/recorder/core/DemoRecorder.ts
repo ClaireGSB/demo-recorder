@@ -17,7 +17,7 @@ export class DemoRecorder {
   private inputActions?: InputActions;
   private selectActions?: SelectActions;
 
-  constructor(private config: DemoConfig) {}
+  constructor(private config: DemoConfig) { }
 
   async initialize(): Promise<void> {
     this.browser = await puppeteer.launch({
@@ -118,13 +118,24 @@ export class DemoRecorder {
     try {
       await this.initialize();
       if (!this.page || !this.recorder) throw new Error('Failed to initialize');
-
+      
+      const startTime = Date.now();
+      
       for (const step of this.config.steps) {
         await this.executeStep(step);
       }
 
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+
+      MetricsLogger.logInfo('Stopping recording...');
+      // Log final recording stats
+      MetricsLogger.logInfo('=== Recording Summary ===');
+      MetricsLogger.logInfo(`Total Duration: ${(duration / 1000).toFixed(2)} seconds`);
+      MetricsLogger.logInfo(`Steps Executed: ${this.config.steps.length}`);
+      MetricsLogger.logInfo('=======================');
+
       if (this.recorder.getStatus().isRecording) {
-        MetricsLogger.logInfo('Stopping recording...');
         await this.recorder.stop();
       }
     } catch (error) {

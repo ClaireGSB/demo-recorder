@@ -36,7 +36,7 @@ export class QueueProcessor {
 
   private async processQueue(): Promise<void> {
     const now = Date.now();
-    
+
     // Calculate how many frames we should process to catch up
     const framesToProcess = Math.min(
       this.frameQueue.length,
