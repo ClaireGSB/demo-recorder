@@ -16,6 +16,14 @@ class CustomScreenRecorder {
   private isRecording: boolean = false;
   private isPaused: boolean = false;
   private pausedTime: number = 0;
+  private frameQueue: Array<{ data: Buffer, timestamp: number }> = [];
+  private lastFrameTime: number = 0;
+  private targetFrameInterval: number;
+  private queueProcessor?: NodeJS.Timeout;
+  private frameTimings: number[] = [];
+  private queueSizeHistory: number[] = [];
+  private lastMetricsLog = Date.now();
+  private METRICS_INTERVAL = 5000; // Log every 5 seconds
 
   public getStatus() {
     return {
@@ -23,6 +31,10 @@ class CustomScreenRecorder {
       isPaused: this.isPaused
     };
   }
+
+  private readonly MAX_QUEUE_SIZE = 15; // Reduced from 30
+  private readonly FRAME_SAMPLE_RATE = 2; // Process every nth frame when under pressure
+  private frameCounter = 0;
 
 
   constructor(
@@ -34,7 +46,9 @@ class CustomScreenRecorder {
       videoCodec: 'libx264',
       videoPreset: 'ultrafast'
     }
-  ) { }
+  ) {
+    this.targetFrameInterval = 1000 / this.options.fps;
+  }
 
   async start(outputPath: string): Promise<void> {
     // Ensure the output directory exists
@@ -53,9 +67,16 @@ class CustomScreenRecorder {
       '-r', `${this.options.fps}`,
       '-i', '-',
       '-c:v', this.options.videoCodec,
-      '-preset', this.options.videoPreset,
-      '-crf', `${this.options.videoCrf}`,
+      '-preset', 'veryfast', // Changed from ultrafast for better quality
+      '-crf', '23',  // Changed from 18 for better compression
+      '-tune', 'zerolatency',
+      '-maxrate', '4M', // Increased for better quality
+      '-bufsize', '8M', // Increased buffer size
       '-pix_fmt', 'yuv420p',
+      '-profile:v', 'main', // Changed from high
+      '-level', '4.0',
+      '-x264opts', 'no-scenecut', // Prevent keyframe insertion
+      '-movflags', '+faststart',
       outputPath
     ]);
 
@@ -66,15 +87,38 @@ class CustomScreenRecorder {
     await this.client.send('Page.startScreencast', {
       format: 'jpeg',
       quality: this.options.quality,
+      maxWidth: 1920, // Add this to limit resolution
+      maxHeight: 1080, // Add this to limit resolution
       everyNthFrame: 1
     });
 
     await this.client.on('Page.screencastFrame', async (frame) => {
       try {
-        if (!this.client) return;
+        if (!this.client || !this.isRecording || this.isPaused) return;
 
-        this.ffmpeg.stdin.write(Buffer.from(frame.data, 'base64'));
-        this.frameCount++;
+        this.frameCounter++;
+
+        // Sample frames when under pressure
+        if (this.frameQueue.length > 10 && this.frameCounter % this.FRAME_SAMPLE_RATE !== 0) {
+          await this.client.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
+          return;
+        }
+
+        const frameBuffer = Buffer.from(frame.data, 'base64');
+
+        if (this.frameQueue.length < this.MAX_QUEUE_SIZE) {
+          this.frameQueue.push({
+            data: frameBuffer,
+            timestamp: Date.now()
+          });
+        } else {
+          // Instead of just dropping, replace oldest frame
+          this.frameQueue.shift(); // Remove oldest
+          this.frameQueue.push({
+            data: frameBuffer,
+            timestamp: Date.now()
+          });
+        }
 
         await this.client.send('Page.screencastFrameAck', {
           sessionId: frame.sessionId
@@ -83,12 +127,24 @@ class CustomScreenRecorder {
         console.error('Error processing frame:', error);
       }
     });
+
+    // Start the queue processor
+    this.startQueueProcessor();
   }
 
   async stop(): Promise<void> {
+    this.stopQueueProcessor();
+
     if (this.client) {
       try {
         await this.client.send('Page.stopScreencast');
+
+        // Process any remaining frames
+        while (this.frameQueue.length > 0) {
+          await this.processFrameQueue();
+        }
+
+
         this.ffmpeg.stdin.end();
 
         await new Promise<void>((resolve, reject) => {
@@ -133,6 +189,91 @@ class CustomScreenRecorder {
       });
       this.isPaused = false;
       console.log(`Recording resumed after ${Date.now() - this.pausedTime}ms pause`);
+    }
+  }
+
+  private async processFrameQueue() {
+    if (!this.isRecording || this.isPaused || this.frameQueue.length === 0) {
+      return;
+    }
+
+    const frame = this.frameQueue[0]; // Peek don't shift yet
+    const now = Date.now();
+    const timeSinceLastFrame = now - this.lastFrameTime;
+
+    // If we're ahead of schedule, wait
+    if (timeSinceLastFrame < this.targetFrameInterval) {
+      await delay(this.targetFrameInterval - timeSinceLastFrame);
+      return;
+    }
+
+    // Now we can safely process the frame
+    this.frameQueue.shift();
+
+    if (timeSinceLastFrame < this.targetFrameInterval) {
+      await delay(this.targetFrameInterval - timeSinceLastFrame);
+    }
+
+    if (this.ffmpeg && this.ffmpeg.stdin.writable) {
+      this.ffmpeg.stdin.write(frame.data);
+      this.frameCount++;
+      this.lastFrameTime = Date.now();
+
+      // Collect metrics
+      this.frameTimings.push(Date.now() - now);
+      this.queueSizeHistory.push(this.frameQueue.length);
+      this.logPerformanceMetrics();
+    }
+
+    if (this.frameCount % 30 === 0) { // Check every 30 frames
+      this.checkMemoryUsage();
+    }
+  }
+
+  private startQueueProcessor() {
+    this.queueProcessor = setInterval(() => {
+      this.processFrameQueue().catch(console.error);
+    }, this.targetFrameInterval / 2);
+  }
+
+  private stopQueueProcessor() {
+    if (this.queueProcessor) {
+      clearInterval(this.queueProcessor);
+      this.queueProcessor = undefined;
+    }
+  }
+
+  private logPerformanceMetrics() {
+    const now = Date.now();
+    if (now - this.lastMetricsLog < this.METRICS_INTERVAL) return;
+
+    // Calculate frame timing statistics
+    const avgFrameTime = this.frameTimings.reduce((a, b) => a + b, 0) / this.frameTimings.length;
+    const maxFrameTime = Math.max(...this.frameTimings);
+    const avgQueueSize = this.queueSizeHistory.reduce((a, b) => a + b, 0) / this.queueSizeHistory.length;
+
+    console.log('Recording Performance Metrics:');
+    console.log(`- Average frame processing time: ${avgFrameTime.toFixed(2)}ms`);
+    console.log(`- Max frame processing time: ${maxFrameTime.toFixed(2)}ms`);
+    console.log(`- Current queue size: ${this.frameQueue.length}`);
+    console.log(`- Average queue size: ${avgQueueSize.toFixed(2)}`);
+    console.log(`- Frames captured: ${this.frameCount}`);
+    console.log(`- Theoretical FPS: ${(1000 / avgFrameTime).toFixed(2)}`);
+
+    // Reset for next interval
+    this.frameTimings = [];
+    this.queueSizeHistory = [];
+    this.lastMetricsLog = now;
+  }
+
+  private checkMemoryUsage() {
+    const used = process.memoryUsage();
+    const maxHeapSize = used.heapTotal * 0.9; // 90% threshold
+
+    if (used.heapUsed > maxHeapSize) {
+      console.warn('Memory pressure detected - dropping frames');
+      // Clear half the queue
+      this.frameQueue.splice(0, Math.floor(this.frameQueue.length / 2));
     }
   }
 }
