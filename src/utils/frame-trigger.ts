@@ -23,6 +23,8 @@
  * - This ensures Chrome only detects visual changes at the desired interval
  * - Even if Chrome captures more often, frames will be identical between updates
  * 
+ * Note: this may not work perfectly? not sure if we get exactly 60 FPS. Will need to dig deeper...
+ * 
  * The animations are designed to be:
  * - Invisible to users (tiny size, nearly transparent)
  * - Performance efficient (using transforms, minimal reflows)
