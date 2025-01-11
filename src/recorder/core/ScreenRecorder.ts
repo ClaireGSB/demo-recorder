@@ -17,7 +17,7 @@ import { MetricsLogger } from '../metrics/MetricsLogger';
 import type { Frame, RecorderStatus, RecordingOptions, RecordingSegment } from '../types';
 import { TransitionManager } from '../transitions/TransitionManager';
 import type { BaseTransitionOptions } from '../transitions/types';
-
+import { FrameTrigger } from '../../utils/frame-trigger';
 
 export class ScreenRecorder {
   private ffmpeg: any;
@@ -68,6 +68,8 @@ export class ScreenRecorder {
     }
   }
 
+
+
   async start(outputPath: string): Promise<void> {
     const outputDir = path.dirname(outputPath);
     if (!fs.existsSync(outputDir)) {
@@ -77,6 +79,7 @@ export class ScreenRecorder {
     this.client = await this.page.createCDPSession();
     this.isRecording = true;
     this.isPaused = false;
+    await FrameTrigger.getInstance().initialize(this.page);
 
     // Set initial segment path
     this.currentSegmentPath = path.join(this.tempDir, `segment-${Date.now()}.mp4`);
@@ -97,8 +100,9 @@ export class ScreenRecorder {
     // Set up frame handling
     await this.client.on('Page.screencastFrame', async (frame) => {
       try {
+        await this.client?.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
+
         if (!this.client || !this.isRecording || this.isPaused) {
-          await this.client?.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
           return;
         }
 
@@ -182,24 +186,23 @@ export class ScreenRecorder {
       }
 
       // Cleanup temp files and .DS_Store
-      if (fs.existsSync(this.tempDir)) {
-        const files = fs.readdirSync(this.tempDir);
-        for (const file of files) {
-          const filePath = path.join(this.tempDir, file);
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-            MetricsLogger.logInfo(`Deleted temp file: ${filePath}`);
-          }
-        }
+      // if (fs.existsSync(this.tempDir)) {
+      //   const files = fs.readdirSync(this.tempDir);
+      //   for (const file of files) {
+      //     const filePath = path.join(this.tempDir, file);
+      //     if (fs.existsSync(filePath)) {
+      //       fs.unlinkSync(filePath);
+      //       MetricsLogger.logInfo(`Deleted temp file: ${filePath}`);
+      //     }
+      //   }
 
-        try {
-          fs.rmdirSync(this.tempDir);
-          MetricsLogger.logInfo('Removed temp directory');
-        } catch (error) {
-          MetricsLogger.logWarning(`Note: Could not remove temp directory: ${(error as Error).message}`);
-        }
-
-      }
+      //   try {
+      //     fs.rmdirSync(this.tempDir);
+      //     MetricsLogger.logInfo('Removed temp directory');
+      //   } catch (error) {
+      //     MetricsLogger.logWarning(`Note: Could not remove temp directory: ${(error as Error).message}`);
+      //   }
+      // }
     } catch (error) {
       MetricsLogger.logError(error as Error, 'Segment processing');
       throw error;
