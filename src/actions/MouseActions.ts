@@ -39,7 +39,7 @@ export class MouseActions {
     return MouseActions.instance;
   }
 
-  private async moveTo(targetX: number, targetY: number, options: MouseMoveOptions = {}): Promise<void> {
+  async moveTo(targetX: number, targetY: number, options: MouseMoveOptions = {}): Promise<void> {
     const {
       minSteps = 35,  // Increased for smoother movement
       maxSteps = 50,
@@ -144,11 +144,12 @@ export class MouseActions {
       this.isMoving = true;
 
       // Wait for element to be ready
-      const element = await this.page.waitForSelector(selector, { visible: true });
+      const element = await this.page.waitForSelector(selector, { visible: true, timeout: 3000 });
       if (!element) {
         console.log('Element not found');
         return false;
       }
+      console.log('Element found:', selector);
 
       // Get element position
       const box = await element.boundingBox();
@@ -157,17 +158,19 @@ export class MouseActions {
         return false;
       }
 
+      console.log('Element bounding box:', box);
+
       const targetX = box.x + box.width / 2;
       const targetY = box.y + box.height / 2;
 
       // Move with steps
       await this.moveTo(targetX, targetY);
 
-      console.log('Performing click action');
+      console.log('Performing click action on element: ', selector);
       await this.page.mouse.down();
       await delay(50);
       await this.page.mouse.up();
-      console.log('Click completed');
+      console.log('Click completed on element:', selector);
 
       return true;
     } catch (error) {

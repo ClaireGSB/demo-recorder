@@ -4,12 +4,8 @@ import * as puppeteer from 'puppeteer';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
-import {
-  DEFAULT_RECORDING_SETTINGS,
-  DEFAULT_SCREENCAST_OPTIONS,
-} from '../config/RecorderConfig';
+import { DEFAULT_SCREENCAST_OPTIONS } from '../config/RecorderConfig';
 import { createFFmpegArgs } from '../config/FFmpegConfig';
-
 import { FrameQueue } from '../queue/FrameQueue';
 import { QueueProcessor } from '../queue/QueueProcessor';
 import { MetricsCollector } from '../metrics/PerformanceMetrics';
@@ -17,7 +13,7 @@ import { MetricsLogger } from '../metrics/MetricsLogger';
 import type { Frame, RecorderStatus, RecordingOptions, RecordingSegment } from '../types';
 import { TransitionManager } from '../transitions/TransitionManager';
 import type { BaseTransitionOptions } from '../transitions/types';
-
+import { FrameTrigger } from '../../utils/frame-trigger';
 
 export class ScreenRecorder {
   private ffmpeg: any;
@@ -68,6 +64,8 @@ export class ScreenRecorder {
     }
   }
 
+
+
   async start(outputPath: string): Promise<void> {
     const outputDir = path.dirname(outputPath);
     if (!fs.existsSync(outputDir)) {
@@ -77,11 +75,11 @@ export class ScreenRecorder {
     this.client = await this.page.createCDPSession();
     this.isRecording = true;
     this.isPaused = false;
+    await FrameTrigger.getInstance().initialize(this.page, this.options.fps);
 
     // Set initial segment path
     this.currentSegmentPath = path.join(this.tempDir, `segment-${Date.now()}.mp4`);
     MetricsLogger.logInfo(`Starting recording to segment: ${this.currentSegmentPath}`);
-
 
 
     // Initialize FFmpeg
@@ -97,8 +95,9 @@ export class ScreenRecorder {
     // Set up frame handling
     await this.client.on('Page.screencastFrame', async (frame) => {
       try {
+        await this.client?.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
+
         if (!this.client || !this.isRecording || this.isPaused) {
-          await this.client?.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
           return;
         }
 
@@ -198,7 +197,6 @@ export class ScreenRecorder {
         } catch (error) {
           MetricsLogger.logWarning(`Note: Could not remove temp directory: ${(error as Error).message}`);
         }
-
       }
     } catch (error) {
       MetricsLogger.logError(error as Error, 'Segment processing');
@@ -292,16 +290,16 @@ export class ScreenRecorder {
         '-y',  // Overwrite output file if it exists
         outputPath
       ];
-  
+
       MetricsLogger.logInfo('FFmpeg copy command:');
       MetricsLogger.logInfo('ffmpeg ' + ffmpegArgs.join(' '));
-  
+
       const ffmpeg = spawn('ffmpeg', ffmpegArgs);
-  
+
       ffmpeg.stderr.on('data', (data) => {
         MetricsLogger.logInfo(`FFmpeg Copy: ${data.toString()}`);
       });
-  
+
       ffmpeg.on('close', (code) => {
         if (code === 0) {
           MetricsLogger.logInfo('Copy completed successfully');
@@ -310,14 +308,14 @@ export class ScreenRecorder {
           reject(new Error(`FFmpeg copy process exited with code ${code}`));
         }
       });
-  
+
       ffmpeg.on('error', (error) => {
         MetricsLogger.logError(error, 'FFmpeg copy process error');
         reject(error);
       });
     });
   }
-  
+
 
   private async concatenateSegments(segments: RecordingSegment[], outputPath: string): Promise<void> {
     // Ensure temp directory exists
