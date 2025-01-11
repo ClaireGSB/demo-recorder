@@ -27,6 +27,7 @@
 ├── package.json
 ├── project-context.xml
 ├── recordings/
+│   ├── .DS_Store
 │   ├── content-flow.mp4
 │   └── login-flow-with-pauses.mp4
 ├── src/
@@ -51,610 +52,6 @@
   <fileContents>
     
           <file>
-            <path>package.json</path>
-            <content><![CDATA[{
-  "name": "demo-recorder",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "build": "tsc",
-    "init": "ts-node src/index.ts init",
-    "record": "ts-node src/index.ts record",
-    "start": "ts-node src/index.ts",
-    "prepare": "npm run build"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "dependencies": {
-    "mouse-helper": "^1.0.7",
-    "puppeteer": "^24.0.0",
-    "toml": "^3.0.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.10.5",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.7.3"
-  }
-}
-]]></content>
-          </file>
-        
-          <file>
-            <path>src/actions/InputActions.ts</path>
-            <content><![CDATA[// src/actions/InputActions.ts
-import { Page } from 'puppeteer';
-import { MouseActions } from './MouseActions';
-import { delay } from '../utils/delay';
-
-export interface TypeOptions {
-  delay?: number;
-  isTextarea?: boolean;
-}
-
-export class InputActions {
-  private mouseActions: MouseActions;
-
-  constructor(private page: Page) {
-    this.mouseActions = MouseActions.getInstance(page);
-  }
-
-  async typeText(selector: string, text: string, options: TypeOptions = {}) {
-    const { 
-      delay: typeDelay = 100, 
-      isTextarea = false 
-    } = options;
-
-    const targetSelector = isTextarea ? `${selector} textarea` : selector;
-    
-    // Click first
-    await this.mouseActions.click(targetSelector);
-    
-    // Small delay before typing
-    await delay(50);
-    
-    // Type the text
-    await this.page.type(targetSelector, text, { delay: typeDelay });
-  }
-
-  async clearAndType(selector: string, text: string, options: TypeOptions = {}) {
-    const targetSelector = options.isTextarea ? `${selector} textarea` : selector;
-    
-    await this.mouseActions.click(targetSelector);
-    await delay(50);
-    
-    // Clear existing content
-    await this.page.keyboard.down('Control');
-    await this.page.keyboard.press('A');
-    await this.page.keyboard.up('Control');
-    await this.page.keyboard.press('Backspace');
-    
-    // Type new content
-    await this.page.type(targetSelector, text, { delay: options.delay });
-  }
-}
-]]></content>
-          </file>
-        
-          <file>
-            <path>src/actions/MouseActions.ts</path>
-            <content><![CDATA[// src/actions/MouseActions.ts
-import { Page } from 'puppeteer';
-import { delay } from '../utils/delay';
-import { MouseHelper } from '../utils/mouse-helper';
-
-declare global {
-  interface Window {
-    'mouse-helper': () => void;
-  }
-}
-
-export interface MouseMoveOptions {
-  minSteps?: number;
-  maxSteps?: number;
-  minDelay?: number;
-  maxDelay?: number;
-  shouldClick?: boolean;
-}
-
-// Make MouseActions a singleton to ensure position state is maintained
-export class MouseActions {
-  private static instance: MouseActions | null = null;
-  private isMoving: boolean = false;
-  private lastKnownPosition: { x: number, y: number } = { x: 0, y: 0 };
-  private scrollOffset: number = 0;
-
-  private constructor(private page: Page) {
-    console.log('MouseActions initialized with position:', this.lastKnownPosition);
-    // Initialize mouse helper
-    MouseHelper.getInstance().ensureInitialized(page).catch(error => {
-      console.warn('Failed to initialize mouse helper:', error);
-    });
-  }
-
-  static getInstance(page: Page): MouseActions {
-    if (!MouseActions.instance) {
-      MouseActions.instance = new MouseActions(page);
-    }
-    return MouseActions.instance;
-  }
-
-  private async moveTo(targetX: number, targetY: number, options: MouseMoveOptions = {}): Promise<void> {
-    const {
-      minSteps = 35,  // Increased for smoother movement
-      maxSteps = 50,
-      minDelay = 10,
-      maxDelay = 15,
-    } = options;
-
-    // NEW Adjust target position by scroll offset for distance calculation
-    const effectiveStartY = this.lastKnownPosition.y - this.scrollOffset;
-    const effectiveTargetY = targetY - this.scrollOffset;
-
-
-    // Calculate total distance
-    const distance = Math.sqrt(
-      Math.pow(targetX - this.lastKnownPosition.x, 2) +
-      Math.pow(effectiveTargetY - effectiveStartY, 2)
-    );
-
-    // Calculate steps based on distance, but ensure smooth movement
-    const steps = Math.min(maxSteps, Math.max(minSteps, Math.floor(distance / 10)));
-
-    // Bezier curve control points
-    const p0 = { x: this.lastKnownPosition.x, y: effectiveStartY }; // start
-    const p3 = { x: targetX, y: effectiveTargetY }; // end
-
-    // Create control points for smooth curve
-    // Randomize control points slightly for more natural movement
-    const randomizeOffset = () => (Math.random() - 0.5) * distance * 0.2;
-
-    const p1 = {
-      x: p0.x + (p3.x - p0.x) * 0.4 + randomizeOffset(),
-      y: p0.y + (p3.y - p0.y) * 0.2 + randomizeOffset()
-    };
-
-    const p2 = {
-      x: p0.x + (p3.x - p0.x) * 0.6 + randomizeOffset(),
-      y: p3.y + (p0.y - p3.y) * 0.2 + randomizeOffset()
-    };
-
-    // Cubic bezier function
-    const bezier = (t: number) => {
-      const oneMinusT = 1 - t;
-      const oneMinusTSquared = oneMinusT * oneMinusT;
-      const oneMinusTCubed = oneMinusTSquared * oneMinusT;
-      const tSquared = t * t;
-      const tCubed = tSquared * t;
-
-      const point = {
-        x: oneMinusTCubed * p0.x +
-          3 * oneMinusTSquared * t * p1.x +
-          3 * oneMinusT * tSquared * p2.x +
-          tCubed * p3.x,
-        y: oneMinusTCubed * p0.y +
-          3 * oneMinusTSquared * t * p1.y +
-          3 * oneMinusT * tSquared * p2.y +
-          tCubed * p3.y
-      };
-
-
-      // Add scroll offset back for actual mouse movement
-      return {
-        x: point.x,
-        y: point.y + this.scrollOffset
-      };
-
-    };
-
-    // Easing function for acceleration/deceleration
-    const easeInOutQuad = (t: number) => {
-      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-    };
-
-    // Perform the movement
-    console.log('Beginning movement to:', { targetX, targetY });
-    for (let step = 0; step <= steps; step++) {
-      const t = easeInOutQuad(step / steps); // Apply easing
-      const point = bezier(t);
-
-      await this.page.mouse.move(point.x, point.y);
-      this.lastKnownPosition = { x: point.x, y: point.y };
-
-      // Variable delay based on acceleration curve
-      const progress = step / steps;
-      const speedFactor = 1 - Math.abs(2 * progress - 1); // Slower at start/end
-      const delay = minDelay + (maxDelay - minDelay) * speedFactor;
-
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-
-    // Ensure we end exactly at target
-    await this.page.mouse.move(targetX, targetY);
-    this.lastKnownPosition = { x: targetX, y: targetY };
-    console.log('Movement completed; final position:', this.lastKnownPosition);
-  }
-
-  async click(selector: string): Promise<boolean> {
-    if (this.isMoving) {
-      await delay(100);
-    }
-
-    try {
-      this.isMoving = true;
-
-      // Wait for element to be ready
-      const element = await this.page.waitForSelector(selector, { visible: true });
-      if (!element) {
-        console.log('Element not found');
-        return false;
-      }
-
-      // Get element position
-      const box = await element.boundingBox();
-      if (!box) {
-        console.log('Could not get element bounding box');
-        return false;
-      }
-
-      const targetX = box.x + box.width / 2;
-      const targetY = box.y + box.height / 2;
-
-      // Move with steps
-      await this.moveTo(targetX, targetY);
-
-      console.log('Performing click action');
-      await this.page.mouse.down();
-      await delay(50);
-      await this.page.mouse.up();
-      console.log('Click completed');
-
-      return true;
-    } catch (error) {
-      console.error('Click failed:', error);
-      return false;
-    } finally {
-      this.isMoving = false;
-    }
-  }
-
-  async smoothScroll(pixels: number, duration: number = 1000): Promise<void> {
-    if (this.isMoving) {
-      await delay(100);
-    }
-
-    try {
-      this.isMoving = true;
-      console.log(`Starting smooth scroll: ${pixels}px over ${duration}ms`);
-      const steps = Math.floor(duration / 16);
-      // pixels per step need to be integer. round down to avoid scrolling too far
-      const pixelsPerStep = Math.floor(pixels / steps);
-      // the remainder pixels to scroll
-      const remainder = pixels % steps;
-
-      // Track scroll offset, but don't adjust mouse position
-      this.scrollOffset += pixels;
-
-      for (let i = 0; i < steps; i++) {
-        await this.page.evaluate((y) => {
-          window.scrollBy(0, y);
-        }, pixelsPerStep);
-        await delay(16);
-      }
-      // Scroll the remainder pixels
-      await this.page.evaluate((y) => {
-        window.scrollBy(0, y);
-      }, remainder);
-
-      console.log('Scroll completed. New offset:', this.scrollOffset);
-    } finally {
-
-      this.isMoving = false;
-    }
-  }
-}]]></content>
-          </file>
-        
-          <file>
-            <path>src/actions/SelectActions.ts</path>
-            <content><![CDATA[// src/actions/SelectActions.ts
-import { Page, ElementHandle } from 'puppeteer';
-import { MouseActions } from './MouseActions';
-import { delay } from '../utils/delay';
-
-export class SelectActions {
-  private mouseActions: MouseActions;
-
-  constructor(private page: Page) {
-    this.mouseActions = MouseActions.getInstance(page);
-  }
-
-  async select(selectSelector: string, optionSelector: string) {
-    // Open the select
-    await this.mouseActions.click(selectSelector);
-    
-    // Wait for options to be visible
-    await delay(500);
-    
-    // Select the option
-    await this.mouseActions.click(optionSelector);
-    
-    // Wait for select to close
-    await delay(500);
-  }
-
-  async selectByText(selectSelector: string, text: string) {
-    await this.mouseActions.click(selectSelector);
-    await delay(500);
-
-    try {
-      // Use page.$ instead of evaluateHandle for proper typing
-      const options = await this.page.$$(`${selectSelector} .v-list-item`);
-      
-      for (const option of options) {
-        const textContent = await option.evaluate(el => el.textContent);
-        if (textContent?.includes(text)) {
-          await option.click();
-          await delay(500);
-          return;
-        }
-      }
-      
-      console.warn(`Option with text "${text}" not found in select ${selectSelector}`);
-    } catch (error) {
-      console.error(`Error selecting option: ${error}`);
-    }
-  }
-
-  async selectByTextSimple(selectSelector: string, text: string) {
-    try {
-      await this.mouseActions.click(selectSelector);
-      await delay(500);
-
-      // Use waitForSelector to ensure the list is visible
-      const optionSelector = `${selectSelector} .v-list-item`;
-      await this.page.waitForSelector(optionSelector, { visible: true });
-
-      // First find all options
-      const options = await this.page.$$(optionSelector);
-      
-      // Then find the one with matching text
-      for (const option of options) {
-        const textContent = await this.page.evaluate(el => el.textContent, option);
-        if (textContent?.includes(text)) {
-          await option.click();
-          await delay(500);
-          return;
-        }
-      }
-
-      console.warn(`Option with text "${text}" not found in select ${selectSelector}`);
-    } catch (error) {
-      console.error(`Error in selectByTextSimple: ${error}`);
-    }
-  }
-}
-]]></content>
-          </file>
-        
-          <file>
-            <path>src/config.ts</path>
-            <content><![CDATA[// src/config.ts
-import * as fs from 'fs';
-import * as path from 'path';
-import * as TOML from 'toml';
-import { DemoConfig } from './recorder/types';
-
-export function getConfigPath(targetDir: string): string {
-  return path.join(targetDir, '.demo-recorder.toml');
-}
-
-export function getExampleConfigPath(): string {
-  return path.join(__dirname, '..', 'example-config.toml');
-}
-
-export function createConfigFile(configPath: string): void {
-  const exampleConfigPath = getExampleConfigPath();
-  
-  if (!fs.existsSync(exampleConfigPath)) {
-    throw new Error('Example config file not found. Please ensure example-config.toml exists in the project root.');
-  }
-
-  fs.copyFileSync(exampleConfigPath, configPath);
-  console.log(`Created new config file at ${configPath}`);
-  console.log('Please customize the config file for your specific needs.');
-}
-
-function interpolateEnvVariables(obj: any): any {
-  if (typeof obj === 'string') {
-    return obj.replace(/\${([^}]+)}/g, (match, envVar) => {
-      // Check if it's a nested reference like auth.email
-      const parts = envVar.split('.');
-      if (parts.length > 1) {
-        return match; // Keep the original ${auth.email} format for nested refs
-      }
-      return process.env[envVar] || match;
-    });
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map(item => interpolateEnvVariables(item));
-  }
-
-  if (obj && typeof obj === 'object') {
-    const result: any = {};
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = interpolateEnvVariables(value);
-    }
-    return result;
-  }
-
-  return obj;
-}
-
-function interpolateConfigReferences(config: any): any {
-  let stringified = JSON.stringify(config);
-  
-  // Replace ${auth.email} and similar with actual values
-  stringified = stringified.replace(/\${([^}]+)}/g, (match, path) => {
-    const parts = path.split('.');
-    let value = config;
-    for (const part of parts) {
-      if (value && typeof value === 'object' && part in value) {
-        value = value[part];
-      } else {
-        return match; // Keep original if path not found
-      }
-    }
-    return typeof value === 'string' ? value : match;
-  });
-
-  return JSON.parse(stringified);
-}
-
-export function readConfig(configPath: string): DemoConfig {
-  try {
-    const content = fs.readFileSync(configPath, 'utf-8');
-    let config = TOML.parse(content) as DemoConfig;
-    
-    // First interpolate environment variables
-    config = interpolateEnvVariables(config);
-    
-    // Then interpolate config references
-    config = interpolateConfigReferences(config);
-    
-    return config;
-  } catch (error) {
-    console.error(`Error reading config at ${configPath}:`, error);
-    throw error;
-  }
-}
-
-export function ensureConfigExists(targetDir: string): string {
-  const configPath = getConfigPath(targetDir);
-  if (!fs.existsSync(configPath)) {
-    createConfigFile(configPath);
-  }
-  return configPath;
-}
-
-export function initializeConfig(targetDir: string): DemoConfig {
-  const configPath = ensureConfigExists(targetDir);
-  return readConfig(configPath);
-}
-]]></content>
-          </file>
-        
-          <file>
-            <path>src/index.ts</path>
-            <content><![CDATA[// src/index.ts
-import * as path from 'path';
-import * as fs from 'fs';
-import { initializeConfig, ensureConfigExists } from './config';
-import { DemoRecorder } from './recorder/CustomScreenRecorder';
-
-// Get command line arguments
-const args = process.argv.slice(2);
-let command = 'record';  // default command
-let targetDir = process.cwd();  // default directory
-
-// If we have arguments, check their order
-if (args.length > 0) {
-  // If the first arg is a command, use it and look for dir in second arg
-  if (args[0] === 'init' || args[0] === 'record') {
-    command = args[0];
-    targetDir = args[1] ? path.resolve(args[1]) : process.cwd();
-  } else {
-    // If first arg isn't a command, it must be the directory
-    targetDir = path.resolve(args[0]);
-  }
-}
-
-console.log(`Command: ${command}`);
-console.log(`Target directory: ${targetDir}`);
-
-async function init() {
-  try {
-    if (!fs.existsSync(targetDir)) {
-      console.error(`Error: Target directory does not exist: ${targetDir}`);
-      process.exit(1);
-    }
-
-    console.log(`Initializing demo recorder config in: ${targetDir}`);
-    
-    // This will create the config file if it doesn't exist
-    const configPath = ensureConfigExists(targetDir);
-    
-    console.log('\nConfiguration file created successfully!');
-    console.log(`Please edit ${configPath} to configure your recording steps.`);
-    console.log('\nOnce configured, you can run:');
-    console.log('demo-record');
-    console.log('\nto start the recording.');
-
-  } catch (error) {
-    console.error('Initialization failed:', error);
-    process.exit(1);
-  }
-}
-
-async function record() {
-  try {
-    if (!fs.existsSync(targetDir)) {
-      console.error(`Error: Target directory does not exist: ${targetDir}`);
-      process.exit(1);
-    }
-
-    console.log(`Starting demo recorder for directory: ${targetDir}`);
-
-    // Load and validate config
-    const config = initializeConfig(targetDir);
-
-    // Create output directory if specified in config
-    const outputDir = path.dirname(path.join(targetDir, config.recording.output));
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
-
-    // Initialize and run recorder
-    const recorder = new DemoRecorder(config);
-    await recorder.record();
-
-  } catch (error) {
-    console.error('Recording failed:', error);
-    process.exit(1);
-  }
-}
-
-// Main execution
-async function main() {
-  try {
-    switch (command) {
-      case 'init':
-        await init();
-        break;
-      case 'record':
-        await record();
-        break;
-      default:
-        console.error('Unknown command. Use "init" or "record"');
-        process.exit(1);
-    }
-  } catch (error) {
-    console.error('Unexpected error:', error);
-    process.exit(1);
-  }
-}
-
-// Run the main function
-main().catch((error) => {
-  console.error('Unexpected error:', error);
-  process.exit(1);
-});
-]]></content>
-          </file>
-        
-          <file>
             <path>src/recorder/CustomScreenRecorder.ts</path>
             <content><![CDATA[//src/recorder/CustomScreenRecorder.ts
 import * as puppeteer from 'puppeteer';
@@ -674,6 +71,17 @@ class CustomScreenRecorder {
   private isRecording: boolean = false;
   private isPaused: boolean = false;
   private pausedTime: number = 0;
+  private frameQueue: Array<{ data: Buffer, timestamp: number }> = [];
+  private lastFrameTime: number = 0;
+  private targetFrameInterval: number;
+  private queueProcessor?: NodeJS.Timeout;
+  private frameTimings: number[] = [];
+  private queueSizeHistory: number[] = [];
+  private lastMetricsLog = Date.now();
+  private METRICS_INTERVAL = 5000; // Log every 5 seconds
+  private lastFrameEncoded = Date.now();
+  private encodingTimes: number[] = [];
+  private encodedFrameCount: number = 0;  // Add this to track encoded frames
 
   public getStatus() {
     return {
@@ -682,17 +90,22 @@ class CustomScreenRecorder {
     };
   }
 
+  private readonly MAX_QUEUE_SIZE = 30; // Reduced from 30
+  private frameCounter = 0;
+
 
   constructor(
     private page: puppeteer.Page,
     private options: RecordingOptions = {
-      fps: 30,
-      quality: 90,
-      videoCrf: 18,
+      fps: 60,
+      quality: 95,
+      videoCrf: 17,
       videoCodec: 'libx264',
-      videoPreset: 'ultrafast'
+      videoPreset: 'veryfast'
     }
-  ) { }
+  ) {
+    this.targetFrameInterval = 1000 / this.options.fps;
+  }
 
   async start(outputPath: string): Promise<void> {
     // Ensure the output directory exists
@@ -724,15 +137,38 @@ class CustomScreenRecorder {
     await this.client.send('Page.startScreencast', {
       format: 'jpeg',
       quality: this.options.quality,
+      maxWidth: 1920, // Add this to limit resolution
+      maxHeight: 1080, // Add this to limit resolution
       everyNthFrame: 1
     });
 
     await this.client.on('Page.screencastFrame', async (frame) => {
       try {
-        if (!this.client) return;
+        if (!this.client || !this.isRecording || this.isPaused) return;
 
-        this.ffmpeg.stdin.write(Buffer.from(frame.data, 'base64'));
-        this.frameCount++;
+        this.frameCounter++;
+
+        // Sample frames when under pressure
+        // if (this.frameQueue.length > 10 && this.frameCounter % this.FRAME_SAMPLE_RATE !== 0) {
+        //   await this.client.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
+        //   return;
+        // }
+
+        const frameBuffer = Buffer.from(frame.data, 'base64');
+
+        if (this.frameQueue.length < this.MAX_QUEUE_SIZE) {
+          this.frameQueue.push({
+            data: frameBuffer,
+            timestamp: Date.now()
+          });
+        } else {
+          // Instead of just dropping, replace oldest frame
+          this.frameQueue.shift(); // Remove oldest
+          this.frameQueue.push({
+            data: frameBuffer,
+            timestamp: Date.now()
+          });
+        }
 
         await this.client.send('Page.screencastFrameAck', {
           sessionId: frame.sessionId
@@ -741,12 +177,24 @@ class CustomScreenRecorder {
         console.error('Error processing frame:', error);
       }
     });
+
+    // Start the queue processor
+    this.startQueueProcessor();
   }
 
   async stop(): Promise<void> {
+    this.stopQueueProcessor();
+
     if (this.client) {
       try {
         await this.client.send('Page.stopScreencast');
+
+        // Process any remaining frames
+        while (this.frameQueue.length > 0) {
+          await this.processFrameQueue();
+        }
+
+
         this.ffmpeg.stdin.end();
 
         await new Promise<void>((resolve, reject) => {
@@ -791,6 +239,99 @@ class CustomScreenRecorder {
       });
       this.isPaused = false;
       console.log(`Recording resumed after ${Date.now() - this.pausedTime}ms pause`);
+    }
+  }
+
+
+  private async processFrameQueue() {
+    if (!this.isRecording || this.isPaused || this.frameQueue.length === 0) {
+      return;
+    }
+
+    try {
+      const now = Date.now();
+      // Process multiple frames if we're falling behind
+      const framesToProcess = Math.min(
+        this.frameQueue.length,
+        Math.max(1, Math.floor((now - this.lastFrameTime) / this.targetFrameInterval))
+      );
+
+      for (let i = 0; i < framesToProcess; i++) {
+        const frame = this.frameQueue.shift();
+        if (!frame || !this.ffmpeg?.stdin.writable) break;
+
+        this.ffmpeg.stdin.write(frame.data);
+        this.encodedFrameCount++;
+        this.frameCount++;
+        this.lastFrameTime = now;
+
+        // Collect metrics
+        this.encodingTimes.push(now - frame.timestamp);
+        this.queueSizeHistory.push(this.frameQueue.length);
+
+        // Log performance metrics every 100 frames
+        if (this.frameCount % 100 === 0) {
+          this.logPerformanceMetrics();
+        }
+
+
+      }
+
+      if (framesToProcess > 1) {
+        console.log(`Processed ${framesToProcess} frames to catch up`);
+      }
+    } catch (error) {
+      console.error('Error processing frame:', error);
+    }
+  }
+
+  private startQueueProcessor() {
+    this.queueProcessor = setInterval(() => {
+      this.processFrameQueue().catch(console.error);
+    }, this.targetFrameInterval / 4);
+  }
+
+  private stopQueueProcessor() {
+    if (this.queueProcessor) {
+      clearInterval(this.queueProcessor);
+      this.queueProcessor = undefined;
+    }
+  }
+
+  private logPerformanceMetrics() {
+    const now = Date.now();
+    if (now - this.lastMetricsLog < this.METRICS_INTERVAL) return;
+
+    const avgEncodingTime = this.encodingTimes.reduce((a, b) => a + b, 0) / this.encodingTimes.length;
+    const maxEncodingTime = Math.max(...this.encodingTimes);
+    const realFPS = 1000 / avgEncodingTime;
+
+    console.log('Recording Performance Metrics:');
+    console.log(`- Average encoding time: ${avgEncodingTime.toFixed(2)}ms`);
+    console.log(`- Max encoding time: ${maxEncodingTime.toFixed(2)}ms`);
+    console.log(`- Average queue size: ${this.queueSizeHistory.reduce((a, b) => a + b, 0) / this.queueSizeHistory.length}`);
+    console.log(`- Current queue size: ${this.frameQueue.length}`);
+    console.log(`- Total frames captured: ${this.frameCounter}`);
+    console.log(`- Frames in queue: ${this.frameQueue.length}`);
+    console.log(`- Frames encoded: ${this.encodedFrameCount}`);
+    console.log(`- Frames dropped: ${this.frameCounter - this.encodedFrameCount}`);
+    console.log(`- Actual FPS: ${realFPS.toFixed(2)}`);
+    console.log(`- Target FPS: ${this.options.fps}`);
+    console.log(`- Encoding speed: ${(realFPS / this.options.fps).toFixed(2)}x`);
+
+    // Reset for next interval
+    this.encodingTimes = [];
+    this.lastMetricsLog = now;
+  }
+
+  private checkMemoryUsage() {
+    const used = process.memoryUsage();
+    const maxHeapSize = used.heapTotal * 0.9; // 90% threshold
+
+    if (used.heapUsed > maxHeapSize) {
+      console.warn('Memory pressure detected - dropping frames');
+      // Clear half the queue
+      this.frameQueue.splice(0, Math.floor(this.frameQueue.length / 2));
     }
   }
 }
@@ -928,400 +469,6 @@ class DemoRecorder {
 }
 
 export { CustomScreenRecorder, DemoRecorder };
-]]></content>
-          </file>
-        
-          <file>
-            <path>src/recorder/types.ts</path>
-            <content><![CDATA[// src/recorder/types.ts
-
-export interface ViewportDimensions {
-  width: number;
-  height: number;
-}
-
-export interface RecordingOptions {
-  fps: number;
-  quality: number;
-  videoCrf: number;
-  videoCodec: string;
-  videoPreset: string;
-}
-
-export interface TypeConfig {
-  slowType?: boolean;
-  typeDelay?: number;  // milliseconds between keystrokes
-}
-
-export interface Step {
-  type: StepType;
-  selector?: string;
-  value?: string;
-  option?: string;
-  duration?: number;
-  path?: string;
-  typeConfig?: TypeConfig;
-}
-
-export type StepType = 
-  | 'navigate' 
-  | 'input' 
-  | 'select' 
-  | 'click' 
-  | 'wait'
-  | 'scrollDown'
-  | 'startRecording'
-  | 'stopRecording'
-  | 'pauseRecording'
-  | 'resumeRecording';
-
-  export interface ScrollStep extends Step {
-    type: 'scrollDown';
-    pixels: number;
-    duration?: number;  // milliseconds
-    moveMouse?: boolean;
-  }
-export interface ProjectConfig {
-  name: string;
-  baseUrl: string;
-  viewport: ViewportDimensions;
-}
-
-export interface AuthConfig {
-  email?: string;
-  password?: string;
-}
-
-export interface RecordingConfig {
-  output: string;
-  fps: number;
-  quality: number;
-  defaultTypeConfig?: TypeConfig;
-}
-
-export interface DemoConfig {
-  project: ProjectConfig;
-  auth?: AuthConfig;
-  recording: RecordingConfig;
-  steps: Step[];
-}
-]]></content>
-          </file>
-        
-          <file>
-            <path>src/utils/browser.ts</path>
-            <content><![CDATA[// src/utils/browser.ts
-import * as puppeteer from 'puppeteer';
-import * as fs from 'fs';
-import * as path from 'path';
-
-interface BrowserOptions {
-  headless?: boolean;
-  viewport?: {
-    width: number;
-    height: number;
-  };
-  userDataDir?: string;
-}
-
-/**
- * Initializes a Puppeteer browser with the specified options
- */
-export async function initializeBrowser(options: BrowserOptions = {}) {
-  const defaultOptions: BrowserOptions = {
-    headless: false,
-    viewport: {
-      width: 1280,
-      height: 800
-    }
-  };
-
-  const mergedOptions = { ...defaultOptions, ...options };
-
-  try {
-    const browser = await puppeteer.launch({
-      headless: mergedOptions.headless,
-      defaultViewport: mergedOptions.viewport,
-      userDataDir: mergedOptions.userDataDir,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu'
-      ]
-    });
-
-    return browser;
-  } catch (error) {
-    console.error('Failed to initialize browser:', error);
-    throw error;
-  }
-}
-
-/**
- * Injects mouse helper script into the page for visualizing cursor movements
- */
-export async function injectMouseHelper(page: puppeteer.Page) {
-  try {
-    // Get the path to the mouse-helper script
-    const mouseHelperPath = require.resolve('mouse-helper/dist/mouse-helper.js');
-    const mouseHelperContent = fs.readFileSync(mouseHelperPath, 'utf8');
-
-    // Inject the mouse-helper script
-    await page.evaluateOnNewDocument(`
-      window.self = window;
-      ${mouseHelperContent}
-      if (document.readyState === 'complete') {
-        window['mouse-helper']();
-      } else {
-        document.addEventListener('DOMContentLoaded', () => {
-          window['mouse-helper']();
-        });
-      }
-    `);
-
-    // Also inject it immediately in case we're after DOM ready
-    await page.evaluate(`
-      window.self = window;
-      if (typeof window['mouse-helper'] === 'function') {
-        window['mouse-helper']();
-      }
-    `);
-  } catch (error) {
-    console.error('Failed to inject mouse helper:', error);
-    throw error;
-  }
-}
-
-/**
- * Ensures the output directory exists for video recordings
- */
-export async function ensureOutputDirectory(outputPath: string) {
-  try {
-    const dir = path.dirname(outputPath);
-    await fs.promises.mkdir(dir, { recursive: true });
-    return dir;
-  } catch (error) {
-    console.error('Failed to create output directory:', error);
-    throw error;
-  }
-}
-
-/**
- * Waits for network to be idle and page to be fully loaded
- */
-export async function waitForPageLoad(page: puppeteer.Page, timeout = 30000) {
-  try {
-    await Promise.all([
-      page.waitForNavigation({ 
-        waitUntil: ['networkidle0', 'load', 'domcontentloaded'],
-        timeout 
-      }),
-      page.waitForFunction(
-        'document.readyState === "complete"',
-        { timeout }
-      )
-    ]);
-  } catch (error) {
-    console.warn('Page load timeout or error:', error);
-    // Don't throw - sometimes pages are usable before everything is fully loaded
-  }
-}
-
-/**
- * Checks if an element is visible and clickable
- */
-export async function isElementClickable(page: puppeteer.Page, selector: string): Promise<boolean> {
-  try {
-    const element = await page.$(selector);
-    if (!element) return false;
-
-    const isVisible = await page.evaluate((el) => {
-      const style = window.getComputedStyle(el);
-      return style && 
-             style.display !== 'none' && 
-             style.visibility !== 'hidden' && 
-             style.opacity !== '0';
-    }, element);
-
-    if (!isVisible) return false;
-
-    const box = await element.boundingBox();
-    return box !== null;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Safely closes a browser instance
- */
-export async function closeBrowser(browser: puppeteer.Browser | undefined) {
-  try {
-    if (browser) {
-      const pages = await browser.pages();
-      await Promise.all(pages.map(page => page.close()));
-      await browser.close();
-    }
-  } catch (error) {
-    console.error('Error closing browser:', error);
-    // Don't throw - this is cleanup code
-  }
-}
-]]></content>
-          </file>
-        
-          <file>
-            <path>src/utils/delay.ts</path>
-            <content><![CDATA[// src/utils/delay.ts
-/**
- * Creates a promise that resolves after a specified number of milliseconds
- * @param ms Number of milliseconds to wait
- * @returns Promise that resolves after the specified delay
- */
-export const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));]]></content>
-          </file>
-        
-          <file>
-            <path>src/utils/mouse-helper.ts</path>
-            <content><![CDATA[// src/utils/mouse-helper.ts
-import { Page } from 'puppeteer';
-import * as fs from 'fs';
-import { delay } from './delay';
-
-export class MouseHelper {
-  private static instance: MouseHelper;
-  private initialized: boolean = false;
-  private initPromise: Promise<void> | null = null;
-  private mouseHelperContent: string | null = null;
-
-  private constructor() {}
-
-  static getInstance(): MouseHelper {
-    if (!MouseHelper.instance) {
-      MouseHelper.instance = new MouseHelper();
-    }
-    return MouseHelper.instance;
-  }
-
-  private async loadMouseHelperContent() {
-    if (this.mouseHelperContent) return;
-
-    try {
-      const mouseHelperPath = require.resolve('mouse-helper/dist/mouse-helper.js');
-      this.mouseHelperContent = fs.readFileSync(mouseHelperPath, 'utf8');
-      console.log('Mouse helper content loaded, length:', this.mouseHelperContent.length);
-    } catch (error) {
-      console.error('Failed to load mouse helper content:', error);
-      throw error;
-    }
-  }
-
-  private async initializePage(page: Page): Promise<void> {
-    if (!this.mouseHelperContent) {
-      await this.loadMouseHelperContent();
-    }
-
-    await page.evaluateOnNewDocument(`
-      window.self = window;
-      ${this.mouseHelperContent}
-      
-      function initMouseHelper() {
-        console.log('InitMouseHelper called, state:', {
-          hasHelper: typeof window['mouse-helper'] === 'function',
-          readyState: document.readyState
-        });
-
-        if (typeof window['mouse-helper'] === 'function') {
-          try {
-            window['mouse-helper']();
-            console.log('Mouse helper initialized successfully');
-          } catch (error) {
-            console.error('Mouse helper initialization failed:', error);
-          }
-        }
-      }
-
-      // Initialize on page load
-      if (document.readyState === 'complete') {
-        console.log('Document ready, initializing immediately');
-        initMouseHelper();
-      } else {
-        console.log('Document not ready, waiting for load');
-        window.addEventListener('load', initMouseHelper);
-      }
-
-      // Backup initialization after a short delay
-      setTimeout(() => {
-        console.log('Backup initialization triggered');
-        initMouseHelper();
-      }, 500);
-    `);
-  }
-
-  async ensureInitialized(page: Page): Promise<boolean> {
-    if (this.initPromise) {
-      await this.initPromise;
-      return this.initialized;
-    }
-
-    this.initPromise = this.initialize(page);
-    try {
-      await this.initPromise;
-      return this.initialized;
-    } finally {
-      this.initPromise = null;
-    }
-  }
-
-  private async initialize(page: Page): Promise<void> {
-    if (this.initialized) return;
-
-    try {
-      await this.loadMouseHelperContent();
-      await this.initializePage(page);
-
-      // Try to initialize up to 3 times
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const isHelperPresent = await page.evaluate(() => {
-            return typeof window['mouse-helper'] === 'function';
-          });
-
-          if (isHelperPresent) {
-            await page.evaluate(() => {
-              window['mouse-helper']();
-            });
-            
-            const helperElement = await page.$('.mouse-helper');
-            if (helperElement) {
-              console.log('Mouse helper initialized successfully on attempt', attempt + 1);
-              this.initialized = true;
-              return;
-            }
-          }
-
-          if (attempt < 2) {
-            await delay(100);
-          }
-        } catch (error) {
-          console.warn(`Mouse helper init attempt ${attempt + 1} failed:`, error);
-          if (attempt === 2) throw error;
-        }
-      }
-    } catch (error) {
-      console.error('Mouse helper initialization failed:', error);
-      throw error;
-    }
-  }
-
-  async reinitialize(page: Page): Promise<void> {
-    this.initialized = false;
-    this.initPromise = null;
-    await this.ensureInitialized(page);
-  }
-}
 ]]></content>
           </file>
         
