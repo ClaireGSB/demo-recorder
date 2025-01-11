@@ -43,10 +43,10 @@ class CustomScreenRecorder {
     private page: puppeteer.Page,
     private options: RecordingOptions = {
       fps: 60,
-      quality: 90,
-      videoCrf: 18,
+      quality: 95,
+      videoCrf: 17,
       videoCodec: 'libx264',
-      videoPreset: 'ultrafast'
+      videoPreset: 'veryfast'
     }
   ) {
     this.targetFrameInterval = 1000 / this.options.fps;
@@ -63,43 +63,15 @@ class CustomScreenRecorder {
     this.isRecording = true;
     this.isPaused = false;
 
-    // this.ffmpeg = spawn('ffmpeg', [
-    //   '-y',
-    //   '-f', 'image2pipe',
-    //   '-r', `${this.options.fps}`,
-    //   '-i', '-',
-    //   '-c:v', this.options.videoCodec,
-    //   '-preset', 'ultrafast', // Changed from ultrafast for better quality
-    //   // '-crf', '23',
-    //   '-tune', 'zerolatency',
-    //   '-maxrate', '4M', // Increased for better quality
-    //   '-bufsize', '16M', // Increased buffer size
-    //   '-pix_fmt', 'yuv420p',
-    //   '-profile:v', 'baseline', // Changed from high
-    //   '-level', '3.0',
-    //   '-x264opts', 'no-scenecut', // Prevent keyframe insertion
-    //   '-movflags', '+faststart',
-    //   '-threads', '8',             // Explicit thread count
-    //   '-x264opts', 'threads=8:no-scenecut',  // Thread hints
-    //   outputPath
-    // ]);
-
     this.ffmpeg = spawn('ffmpeg', [
       '-y',
       '-f', 'image2pipe',
       '-r', `${this.options.fps}`,
       '-i', '-',
       '-c:v', this.options.videoCodec,
-      '-preset', 'veryfast', // Changed from ultrafast for better quality
-      '-crf', '23',  // Changed from 18 for better compression
-      '-tune', 'zerolatency',
-      '-maxrate', '4M', // Increased for better quality
-      '-bufsize', '8M', // Increased buffer size
+      '-preset', this.options.videoPreset,
+      '-crf', `${this.options.videoCrf}`,
       '-pix_fmt', 'yuv420p',
-      '-profile:v', 'main', // Changed from high
-      '-level', '4.0',
-      '-x264opts', 'no-scenecut', // Prevent keyframe insertion
-      '-movflags', '+faststart',
       outputPath
     ]);
 
@@ -241,6 +213,13 @@ class CustomScreenRecorder {
             // Collect metrics
             this.encodingTimes.push(now - frame.timestamp);
             this.queueSizeHistory.push(this.frameQueue.length);
+
+            // Log performance metrics every 100 frames
+            if (this.frameCount % 100 === 0) {
+                this.logPerformanceMetrics();
+            }
+      
+            
         }
 
         if (framesToProcess > 1) {
