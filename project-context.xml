@@ -39,6 +39,18 @@
 │   ├── index.ts
 │   ├── recorder/
 │   │   ├── CustomScreenRecorder.ts
+│   │   ├── config/
+│   │   │   ├── FFmpegConfig.ts
+│   │   │   └── RecorderConfig.ts
+│   │   ├── core/
+│   │   │   ├── DemoRecorder.ts
+│   │   │   └── ScreenRecorder.ts
+│   │   ├── metrics/
+│   │   │   ├── MetricsLogger.ts
+│   │   │   └── PerformanceMetrics.ts
+│   │   ├── queue/
+│   │   │   ├── FrameQueue.ts
+│   │   │   └── QueueProcessor.ts
 │   │   └── types.ts
 │   └── utils/
 │       ├── browser.ts
@@ -52,301 +64,810 @@
   <fileContents>
     
           <file>
-            <path>src/recorder/CustomScreenRecorder.ts</path>
-            <content><![CDATA[//src/recorder/CustomScreenRecorder.ts
-import * as puppeteer from 'puppeteer';
-import { spawn } from 'child_process';
+            <path>example-config.toml</path>
+            <content><![CDATA[# Project configuration
+[project]
+name = "demo-nuxt-app"
+baseUrl = "http://localhost:3001"
+
+[project.viewport]
+width = 1280
+height = 800
+
+# Authentication settings (using environment variables)
+[auth]
+email = "${SCREENSHOT_LOGIN_EMAIL}"
+password = "${SCREENSHOT_LOGIN_PASSWORD}"
+
+# Recording settings
+[recording]
+output = "recordings/login-flow-with-pauses.mp4"
+fps = 30
+quality = 90
+
+# Default typing configuration for all input steps
+[recording.defaultTypeConfig]
+slowType = false
+typeDelay = 50  # Default to fast typing
+
+# Demo recording steps
+[[steps]]
+type = "navigate"
+path = "/login"
+
+[[steps]]
+type = "wait"
+duration = 1000
+
+[[steps]]
+type = "startRecording"  # Explicitly start recording before login sequence
+
+[[steps]]
+type = "input"
+selector = "[type='email']"
+value = "${auth.email}"
+typeConfig = { slowType = true, typeDelay = 150 }  # Override for slow typing
+
+[[steps]]
+type = "input"
+selector = "[type='password']"
+value = "${auth.password}"
+# Uses default fast typing since no typeConfig specified
+
+[[steps]]
+type = "click"
+selector = "[type='submit']"
+
+[[steps]]
+type = "wait"
+duration = 1000
+
+[[steps]]
+type = "pauseRecording"  # Pause during the long loading time
+
+
+# Navigate to content page
+[[steps]]
+type = "navigate"
+path = "/content"
+
+[[steps]]
+type = "wait"
+duration = 5000
+
+[[steps]]
+type = "resumeRecording" # Resume recording after the long loading time
+
+# Select content type
+[[steps]]
+type = "select"
+selector = "[data-test='content-type-select']"
+option = "[data-test='content-type-twitter_post']"
+
+[[steps]]
+type = "wait"
+duration = 500
+
+# Select voice
+[[steps]]
+type = "select"
+selector = "[data-test='voice-select']"
+option = "[data-test='voice-Nativish']"
+
+[[steps]]
+type = "wait"
+duration = 500
+
+# Select action
+[[steps]]
+type = "click"
+selector = "[data-test='action-select']"
+
+[[steps]]
+type = "wait"
+duration = 1000
+
+[[steps]]
+type = "click"
+selector = "[data-test='write_topic']"
+
+[[steps]]
+type = "wait"
+duration = 1000
+
+# Fill topic field
+[[steps]]
+type = "input"
+selector = "[data-test='topic']"
+value = "The Future of AI Development"
+typeConfig = { slowType = true, typeDelay = 200 }
+
+[[steps]]
+type = "wait"
+duration = 1000
+
+[[steps]]
+type = "scrollDown"
+pixels = 500  # scroll down 500 pixels
+duration = 1000  # take 1 second to complete the scroll
+
+# Fill additional instructions
+[[steps]]
+type = "input"
+selector = "[data-test='additional_instructions']"
+value = "Include specific examples of AI tools in development workflows."
+# Uses default fast typing since no typeConfig specified
+
+[[steps]]
+type = "wait"
+duration = 2000
+
+[[steps]]
+type = "stopRecording" ]]></content>
+          </file>
+        
+          <file>
+            <path>src/config.ts</path>
+            <content><![CDATA[// src/config.ts
 import * as fs from 'fs';
 import * as path from 'path';
-import { MouseActions } from '../actions/MouseActions';
-import { InputActions } from '../actions/InputActions';
-import { SelectActions } from '../actions/SelectActions';
-import { delay } from '../utils/delay';
-import { DemoConfig, RecordingOptions } from './types';
+import * as TOML from 'toml';
+import { DemoConfig } from './recorder/types';
 
-class CustomScreenRecorder {
-  private ffmpeg: any;
-  private frameCount: number = 0;
-  private client: puppeteer.CDPSession | null = null;
-  private isRecording: boolean = false;
-  private isPaused: boolean = false;
-  private pausedTime: number = 0;
-  private frameQueue: Array<{ data: Buffer, timestamp: number }> = [];
-  private lastFrameTime: number = 0;
-  private targetFrameInterval: number;
-  private queueProcessor?: NodeJS.Timeout;
-  private frameTimings: number[] = [];
-  private queueSizeHistory: number[] = [];
-  private lastMetricsLog = Date.now();
-  private METRICS_INTERVAL = 5000; // Log every 5 seconds
-  private lastFrameEncoded = Date.now();
-  private encodingTimes: number[] = [];
-  private encodedFrameCount: number = 0;  // Add this to track encoded frames
+export function getConfigPath(targetDir: string): string {
+  return path.join(targetDir, '.demo-recorder.toml');
+}
 
-  public getStatus() {
-    return {
-      isRecording: this.isRecording,
-      isPaused: this.isPaused
-    };
+export function getExampleConfigPath(): string {
+  return path.join(__dirname, '..', 'example-config.toml');
+}
+
+export function createConfigFile(configPath: string): void {
+  const exampleConfigPath = getExampleConfigPath();
+  
+  if (!fs.existsSync(exampleConfigPath)) {
+    throw new Error('Example config file not found. Please ensure example-config.toml exists in the project root.');
   }
 
-  private readonly MAX_QUEUE_SIZE = 30; // Reduced from 30
-  private frameCounter = 0;
+  fs.copyFileSync(exampleConfigPath, configPath);
+  console.log(`Created new config file at ${configPath}`);
+  console.log('Please customize the config file for your specific needs.');
+}
 
+function interpolateEnvVariables(obj: any): any {
+  if (typeof obj === 'string') {
+    return obj.replace(/\${([^}]+)}/g, (match, envVar) => {
+      // Check if it's a nested reference like auth.email
+      const parts = envVar.split('.');
+      if (parts.length > 1) {
+        return match; // Keep the original ${auth.email} format for nested refs
+      }
+      return process.env[envVar] || match;
+    });
+  }
 
-  constructor(
-    private page: puppeteer.Page,
-    private options: RecordingOptions = {
-      fps: 60,
-      quality: 95,
-      videoCrf: 17,
-      videoCodec: 'libx264',
-      videoPreset: 'veryfast'
+  if (Array.isArray(obj)) {
+    return obj.map(item => interpolateEnvVariables(item));
+  }
+
+  if (obj && typeof obj === 'object') {
+    const result: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = interpolateEnvVariables(value);
     }
-  ) {
-    this.targetFrameInterval = 1000 / this.options.fps;
+    return result;
   }
 
-  async start(outputPath: string): Promise<void> {
-    // Ensure the output directory exists
-    const outputDir = path.dirname(outputPath);
+  return obj;
+}
+
+function interpolateConfigReferences(config: any): any {
+  let stringified = JSON.stringify(config);
+  
+  // Replace ${auth.email} and similar with actual values
+  stringified = stringified.replace(/\${([^}]+)}/g, (match, path) => {
+    const parts = path.split('.');
+    let value = config;
+    for (const part of parts) {
+      if (value && typeof value === 'object' && part in value) {
+        value = value[part];
+      } else {
+        return match; // Keep original if path not found
+      }
+    }
+    return typeof value === 'string' ? value : match;
+  });
+
+  return JSON.parse(stringified);
+}
+
+export function readConfig(configPath: string): DemoConfig {
+  try {
+    const content = fs.readFileSync(configPath, 'utf-8');
+    let config = TOML.parse(content) as DemoConfig;
+    
+    // First interpolate environment variables
+    config = interpolateEnvVariables(config);
+    
+    // Then interpolate config references
+    config = interpolateConfigReferences(config);
+    
+    return config;
+  } catch (error) {
+    console.error(`Error reading config at ${configPath}:`, error);
+    throw error;
+  }
+}
+
+export function ensureConfigExists(targetDir: string): string {
+  const configPath = getConfigPath(targetDir);
+  if (!fs.existsSync(configPath)) {
+    createConfigFile(configPath);
+  }
+  return configPath;
+}
+
+export function initializeConfig(targetDir: string): DemoConfig {
+  const configPath = ensureConfigExists(targetDir);
+  return readConfig(configPath);
+}
+]]></content>
+          </file>
+        
+          <file>
+            <path>src/index.ts</path>
+            <content><![CDATA[// src/index.ts
+import * as path from 'path';
+import * as fs from 'fs';
+import { initializeConfig, ensureConfigExists } from './config';
+import { DemoRecorder } from './recorder/core/DemoRecorder';  // Updated import path
+import { MetricsLogger } from './recorder/metrics/MetricsLogger';  // Add MetricsLogger for better logging
+
+async function init() {
+  try {
+    if (!fs.existsSync(targetDir)) {
+      MetricsLogger.logError(new Error(`Target directory does not exist: ${targetDir}`), 'Initialization');
+      process.exit(1);
+    }
+
+    MetricsLogger.logInfo(`Initializing demo recorder config in: ${targetDir}`);
+
+    // This will create the config file if it doesn't exist
+    const configPath = ensureConfigExists(targetDir);
+
+    MetricsLogger.logInfo('\nConfiguration file created successfully!');
+    MetricsLogger.logInfo(`Please edit ${configPath} to configure your recording steps.`);
+    MetricsLogger.logInfo('\nOnce configured, you can run:');
+    MetricsLogger.logInfo('demo-record');
+    MetricsLogger.logInfo('\nto start the recording.');
+
+  } catch (error) {
+    MetricsLogger.logError(error as Error, 'Initialization');
+    process.exit(1);
+  }
+}
+
+async function record() {
+  try {
+    if (!fs.existsSync(targetDir)) {
+      MetricsLogger.logError(new Error(`Target directory does not exist: ${targetDir}`), 'Recording');
+      process.exit(1);
+    }
+
+    MetricsLogger.logInfo(`Starting demo recorder for directory: ${targetDir}`);
+
+    // Load and validate config
+    const config = initializeConfig(targetDir);
+
+    // Create output directory if specified in config
+    const outputDir = path.dirname(path.join(targetDir, config.recording.output));
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    this.client = await this.page.createCDPSession();
-    this.isRecording = true;
-    this.isPaused = false;
+    // Initialize and run recorder
+    const recorder = new DemoRecorder(config);
+    await recorder.record();
 
-    this.ffmpeg = spawn('ffmpeg', [
-      '-y',
-      '-f', 'image2pipe',
-      '-r', `${this.options.fps}`,
-      '-i', '-',
-      '-c:v', this.options.videoCodec,
-      '-preset', this.options.videoPreset,
-      '-crf', `${this.options.videoCrf}`,
-      '-pix_fmt', 'yuv420p',
-      outputPath
-    ]);
-
-    this.ffmpeg.stderr.on('data', (data: Buffer) => {
-      console.log(`FFmpeg: ${data.toString()}`);
-    });
-
-    await this.client.send('Page.startScreencast', {
-      format: 'jpeg',
-      quality: this.options.quality,
-      maxWidth: 1920, // Add this to limit resolution
-      maxHeight: 1080, // Add this to limit resolution
-      everyNthFrame: 1
-    });
-
-    await this.client.on('Page.screencastFrame', async (frame) => {
-      try {
-        if (!this.client || !this.isRecording || this.isPaused) return;
-
-        this.frameCounter++;
-
-        // Sample frames when under pressure
-        // if (this.frameQueue.length > 10 && this.frameCounter % this.FRAME_SAMPLE_RATE !== 0) {
-        //   await this.client.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
-        //   return;
-        // }
-
-        const frameBuffer = Buffer.from(frame.data, 'base64');
-
-        if (this.frameQueue.length < this.MAX_QUEUE_SIZE) {
-          this.frameQueue.push({
-            data: frameBuffer,
-            timestamp: Date.now()
-          });
-        } else {
-          // Instead of just dropping, replace oldest frame
-          this.frameQueue.shift(); // Remove oldest
-          this.frameQueue.push({
-            data: frameBuffer,
-            timestamp: Date.now()
-          });
-        }
-
-        await this.client.send('Page.screencastFrameAck', {
-          sessionId: frame.sessionId
-        }).catch(console.error);
-      } catch (error) {
-        console.error('Error processing frame:', error);
-      }
-    });
-
-    // Start the queue processor
-    this.startQueueProcessor();
-  }
-
-  async stop(): Promise<void> {
-    this.stopQueueProcessor();
-
-    if (this.client) {
-      try {
-        await this.client.send('Page.stopScreencast');
-
-        // Process any remaining frames
-        while (this.frameQueue.length > 0) {
-          await this.processFrameQueue();
-        }
-
-
-        this.ffmpeg.stdin.end();
-
-        await new Promise<void>((resolve, reject) => {
-          this.ffmpeg.on('close', (code: number) => {
-            if (code === 0) {
-              console.log(`Recording completed with ${this.frameCount} frames`);
-              resolve();
-            } else {
-              reject(new Error(`FFmpeg exited with code ${code}`));
-            }
-          });
-        });
-
-        await this.client.detach();
-        this.client = null;
-      } catch (error) {
-        console.error('Error stopping recording:', error);
-        throw error;
-      }
-    }
-  }
-
-  async pause(): Promise<void> {
-    if (!this.isRecording || this.isPaused) return;
-
-    if (this.client) {
-      await this.client.send('Page.stopScreencast');
-      this.isPaused = true;
-      this.pausedTime = Date.now();
-      console.log('Recording paused');
-    }
-  }
-
-  async resume(): Promise<void> {
-    if (!this.isRecording || !this.isPaused) return;
-
-    if (this.client) {
-      await this.client.send('Page.startScreencast', {
-        format: 'jpeg',
-        quality: this.options.quality,
-        everyNthFrame: 1
-      });
-      this.isPaused = false;
-      console.log(`Recording resumed after ${Date.now() - this.pausedTime}ms pause`);
-    }
-  }
-
-
-  private async processFrameQueue() {
-    if (!this.isRecording || this.isPaused || this.frameQueue.length === 0) {
-      return;
-    }
-
-    try {
-      const now = Date.now();
-      // Process multiple frames if we're falling behind
-      const framesToProcess = Math.min(
-        this.frameQueue.length,
-        Math.max(1, Math.floor((now - this.lastFrameTime) / this.targetFrameInterval))
-      );
-
-      for (let i = 0; i < framesToProcess; i++) {
-        const frame = this.frameQueue.shift();
-        if (!frame || !this.ffmpeg?.stdin.writable) break;
-
-        this.ffmpeg.stdin.write(frame.data);
-        this.encodedFrameCount++;
-        this.frameCount++;
-        this.lastFrameTime = now;
-
-        // Collect metrics
-        this.encodingTimes.push(now - frame.timestamp);
-        this.queueSizeHistory.push(this.frameQueue.length);
-
-        // Log performance metrics every 100 frames
-        if (this.frameCount % 100 === 0) {
-          this.logPerformanceMetrics();
-        }
-
-
-      }
-
-      if (framesToProcess > 1) {
-        console.log(`Processed ${framesToProcess} frames to catch up`);
-      }
-    } catch (error) {
-      console.error('Error processing frame:', error);
-    }
-  }
-
-  private startQueueProcessor() {
-    this.queueProcessor = setInterval(() => {
-      this.processFrameQueue().catch(console.error);
-    }, this.targetFrameInterval / 4);
-  }
-
-  private stopQueueProcessor() {
-    if (this.queueProcessor) {
-      clearInterval(this.queueProcessor);
-      this.queueProcessor = undefined;
-    }
-  }
-
-  private logPerformanceMetrics() {
-    const now = Date.now();
-    if (now - this.lastMetricsLog < this.METRICS_INTERVAL) return;
-
-    const avgEncodingTime = this.encodingTimes.reduce((a, b) => a + b, 0) / this.encodingTimes.length;
-    const maxEncodingTime = Math.max(...this.encodingTimes);
-    const realFPS = 1000 / avgEncodingTime;
-
-    console.log('Recording Performance Metrics:');
-    console.log(`- Average encoding time: ${avgEncodingTime.toFixed(2)}ms`);
-    console.log(`- Max encoding time: ${maxEncodingTime.toFixed(2)}ms`);
-    console.log(`- Average queue size: ${this.queueSizeHistory.reduce((a, b) => a + b, 0) / this.queueSizeHistory.length}`);
-    console.log(`- Current queue size: ${this.frameQueue.length}`);
-    console.log(`- Total frames captured: ${this.frameCounter}`);
-    console.log(`- Frames in queue: ${this.frameQueue.length}`);
-    console.log(`- Frames encoded: ${this.encodedFrameCount}`);
-    console.log(`- Frames dropped: ${this.frameCounter - this.encodedFrameCount}`);
-    console.log(`- Actual FPS: ${realFPS.toFixed(2)}`);
-    console.log(`- Target FPS: ${this.options.fps}`);
-    console.log(`- Encoding speed: ${(realFPS / this.options.fps).toFixed(2)}x`);
-
-    // Reset for next interval
-    this.encodingTimes = [];
-    this.lastMetricsLog = now;
-  }
-
-  private checkMemoryUsage() {
-    const used = process.memoryUsage();
-    const maxHeapSize = used.heapTotal * 0.9; // 90% threshold
-
-    if (used.heapUsed > maxHeapSize) {
-      console.warn('Memory pressure detected - dropping frames');
-      // Clear half the queue
-      this.frameQueue.splice(0, Math.floor(this.frameQueue.length / 2));
-    }
+  } catch (error) {
+    MetricsLogger.logError(error as Error, 'Recording');
+    process.exit(1);
   }
 }
 
-class DemoRecorder {
+// Get command line arguments
+const args = process.argv.slice(2);
+let command = 'record';  // default command
+let targetDir = process.cwd();  // default directory
+
+// If we have arguments, check their order
+if (args.length > 0) {
+  // If the first arg is a command, use it and look for dir in second arg
+  if (args[0] === 'init' || args[0] === 'record') {
+    command = args[0];
+    targetDir = args[1] ? path.resolve(args[1]) : process.cwd();
+  } else {
+    // If first arg isn't a command, it must be the directory
+    targetDir = path.resolve(args[0]);
+  }
+}
+
+MetricsLogger.logInfo(`Command: ${command}`);
+MetricsLogger.logInfo(`Target directory: ${targetDir}`);
+
+// Main execution
+async function main() {
+  try {
+    switch (command) {
+      case 'init':
+        await init();
+        break;
+      case 'record':
+        await record();
+        break;
+      default:
+        MetricsLogger.logError(new Error('Unknown command. Use "init" or "record"'), 'Command validation');
+        process.exit(1);
+    }
+  } catch (error) {
+    MetricsLogger.logError(error as Error, 'Main execution');
+    process.exit(1);
+  }
+}
+
+// Run the main function
+main().catch((error) => {
+  MetricsLogger.logError(error as Error, 'Application startup');
+  process.exit(1);
+});
+]]></content>
+          </file>
+        
+          <file>
+            <path>src/recorder/CustomScreenRecorder.ts</path>
+            <content><![CDATA[// //src/recorder/CustomScreenRecorder.ts
+// import * as puppeteer from 'puppeteer';
+// import { spawn } from 'child_process';
+// import * as fs from 'fs';
+// import * as path from 'path';
+// import { MouseActions } from '../actions/MouseActions';
+// import { InputActions } from '../actions/InputActions';
+// import { SelectActions } from '../actions/SelectActions';
+// import { delay } from '../utils/delay';
+// import { DemoConfig, RecordingOptions } from './types';
+
+// class CustomScreenRecorder {
+//   private ffmpeg: any;
+//   private frameCount: number = 0;
+//   private client: puppeteer.CDPSession | null = null;
+//   private isRecording: boolean = false;
+//   private isPaused: boolean = false;
+//   private pausedTime: number = 0;
+//   private frameQueue: Array<{ data: Buffer, timestamp: number }> = [];
+//   private lastFrameTime: number = 0;
+//   private targetFrameInterval: number;
+//   private queueProcessor?: NodeJS.Timeout;
+//   private frameTimings: number[] = [];
+//   private queueSizeHistory: number[] = [];
+//   private lastMetricsLog = Date.now();
+//   private METRICS_INTERVAL = 5000; // Log every 5 seconds
+//   private lastFrameEncoded = Date.now();
+//   private encodingTimes: number[] = [];
+//   private encodedFrameCount: number = 0;  // Add this to track encoded frames
+
+//   public getStatus() {
+//     return {
+//       isRecording: this.isRecording,
+//       isPaused: this.isPaused
+//     };
+//   }
+
+//   private readonly MAX_QUEUE_SIZE = 30; // Reduced from 30
+//   private frameCounter = 0;
+
+
+//   constructor(
+//     private page: puppeteer.Page,
+//     private options: RecordingOptions = {
+//       fps: 60,
+//       quality: 95,
+//       videoCrf: 17,
+//       videoCodec: 'libx264',
+//       videoPreset: 'veryfast'
+//     }
+//   ) {
+//     this.targetFrameInterval = 1000 / this.options.fps;
+//   }
+
+//   async start(outputPath: string): Promise<void> {
+//     // Ensure the output directory exists
+//     const outputDir = path.dirname(outputPath);
+//     if (!fs.existsSync(outputDir)) {
+//       fs.mkdirSync(outputDir, { recursive: true });
+//     }
+
+//     this.client = await this.page.createCDPSession();
+//     this.isRecording = true;
+//     this.isPaused = false;
+
+//     this.ffmpeg = spawn('ffmpeg', [
+//       '-y',
+//       '-f', 'image2pipe',
+//       '-r', `${this.options.fps}`,
+//       '-i', '-',
+//       '-c:v', this.options.videoCodec,
+//       '-preset', this.options.videoPreset,
+//       '-crf', `${this.options.videoCrf}`,
+//       '-pix_fmt', 'yuv420p',
+//       outputPath
+//     ]);
+
+//     this.ffmpeg.stderr.on('data', (data: Buffer) => {
+//       console.log(`FFmpeg: ${data.toString()}`);
+//     });
+
+//     await this.client.send('Page.startScreencast', {
+//       format: 'jpeg',
+//       quality: this.options.quality,
+//       maxWidth: 1920, // Add this to limit resolution
+//       maxHeight: 1080, // Add this to limit resolution
+//       everyNthFrame: 1
+//     });
+
+//     await this.client.on('Page.screencastFrame', async (frame) => {
+//       try {
+//         if (!this.client || !this.isRecording || this.isPaused) return;
+
+//         this.frameCounter++;
+
+//         // Sample frames when under pressure
+//         // if (this.frameQueue.length > 10 && this.frameCounter % this.FRAME_SAMPLE_RATE !== 0) {
+//         //   await this.client.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
+//         //   return;
+//         // }
+
+//         const frameBuffer = Buffer.from(frame.data, 'base64');
+
+//         if (this.frameQueue.length < this.MAX_QUEUE_SIZE) {
+//           this.frameQueue.push({
+//             data: frameBuffer,
+//             timestamp: Date.now()
+//           });
+//         } else {
+//           // Instead of just dropping, replace oldest frame
+//           this.frameQueue.shift(); // Remove oldest
+//           this.frameQueue.push({
+//             data: frameBuffer,
+//             timestamp: Date.now()
+//           });
+//         }
+
+//         await this.client.send('Page.screencastFrameAck', {
+//           sessionId: frame.sessionId
+//         }).catch(console.error);
+//       } catch (error) {
+//         console.error('Error processing frame:', error);
+//       }
+//     });
+
+//     // Start the queue processor
+//     this.startQueueProcessor();
+//   }
+
+//   async stop(): Promise<void> {
+//     this.stopQueueProcessor();
+
+//     if (this.client) {
+//       try {
+//         await this.client.send('Page.stopScreencast');
+
+//         // Process any remaining frames
+//         while (this.frameQueue.length > 0) {
+//           await this.processFrameQueue();
+//         }
+
+
+//         this.ffmpeg.stdin.end();
+
+//         await new Promise<void>((resolve, reject) => {
+//           this.ffmpeg.on('close', (code: number) => {
+//             if (code === 0) {
+//               console.log(`Recording completed with ${this.frameCount} frames`);
+//               resolve();
+//             } else {
+//               reject(new Error(`FFmpeg exited with code ${code}`));
+//             }
+//           });
+//         });
+
+//         await this.client.detach();
+//         this.client = null;
+//       } catch (error) {
+//         console.error('Error stopping recording:', error);
+//         throw error;
+//       }
+//     }
+//   }
+
+//   async pause(): Promise<void> {
+//     if (!this.isRecording || this.isPaused) return;
+
+//     if (this.client) {
+//       await this.client.send('Page.stopScreencast');
+//       this.isPaused = true;
+//       this.pausedTime = Date.now();
+//       console.log('Recording paused');
+//     }
+//   }
+
+//   async resume(): Promise<void> {
+//     if (!this.isRecording || !this.isPaused) return;
+
+//     if (this.client) {
+//       await this.client.send('Page.startScreencast', {
+//         format: 'jpeg',
+//         quality: this.options.quality,
+//         everyNthFrame: 1
+//       });
+//       this.isPaused = false;
+//       console.log(`Recording resumed after ${Date.now() - this.pausedTime}ms pause`);
+//     }
+//   }
+
+
+//   private async processFrameQueue() {
+//     if (!this.isRecording || this.isPaused || this.frameQueue.length === 0) {
+//       return;
+//     }
+
+//     try {
+//       const now = Date.now();
+//       // Process multiple frames if we're falling behind
+//       const framesToProcess = Math.min(
+//         this.frameQueue.length,
+//         Math.max(1, Math.floor((now - this.lastFrameTime) / this.targetFrameInterval))
+//       );
+
+//       for (let i = 0; i < framesToProcess; i++) {
+//         const frame = this.frameQueue.shift();
+//         if (!frame || !this.ffmpeg?.stdin.writable) break;
+
+//         this.ffmpeg.stdin.write(frame.data);
+//         this.encodedFrameCount++;
+//         this.frameCount++;
+//         this.lastFrameTime = now;
+
+//         // Collect metrics
+//         this.encodingTimes.push(now - frame.timestamp);
+//         this.queueSizeHistory.push(this.frameQueue.length);
+
+//         // Log performance metrics every 100 frames
+//         if (this.frameCount % 100 === 0) {
+//           this.logPerformanceMetrics();
+//         }
+
+
+//       }
+
+//       if (framesToProcess > 1) {
+//         console.log(`Processed ${framesToProcess} frames to catch up`);
+//       }
+//     } catch (error) {
+//       console.error('Error processing frame:', error);
+//     }
+//   }
+
+//   private startQueueProcessor() {
+//     this.queueProcessor = setInterval(() => {
+//       this.processFrameQueue().catch(console.error);
+//     }, this.targetFrameInterval / 4);
+//   }
+
+//   private stopQueueProcessor() {
+//     if (this.queueProcessor) {
+//       clearInterval(this.queueProcessor);
+//       this.queueProcessor = undefined;
+//     }
+//   }
+
+//   private logPerformanceMetrics() {
+//     const now = Date.now();
+//     if (now - this.lastMetricsLog < this.METRICS_INTERVAL) return;
+
+//     const avgEncodingTime = this.encodingTimes.reduce((a, b) => a + b, 0) / this.encodingTimes.length;
+//     const maxEncodingTime = Math.max(...this.encodingTimes);
+//     const realFPS = 1000 / avgEncodingTime;
+
+//     console.log('Recording Performance Metrics:');
+//     console.log(`- Average encoding time: ${avgEncodingTime.toFixed(2)}ms`);
+//     console.log(`- Max encoding time: ${maxEncodingTime.toFixed(2)}ms`);
+//     console.log(`- Average queue size: ${this.queueSizeHistory.reduce((a, b) => a + b, 0) / this.queueSizeHistory.length}`);
+//     console.log(`- Current queue size: ${this.frameQueue.length}`);
+//     console.log(`- Total frames captured: ${this.frameCounter}`);
+//     console.log(`- Frames in queue: ${this.frameQueue.length}`);
+//     console.log(`- Frames encoded: ${this.encodedFrameCount}`);
+//     console.log(`- Frames dropped: ${this.frameCounter - this.encodedFrameCount}`);
+//     console.log(`- Actual FPS: ${realFPS.toFixed(2)}`);
+//     console.log(`- Target FPS: ${this.options.fps}`);
+//     console.log(`- Encoding speed: ${(realFPS / this.options.fps).toFixed(2)}x`);
+
+//     // Reset for next interval
+//     this.encodingTimes = [];
+//     this.lastMetricsLog = now;
+//   }
+
+//   private checkMemoryUsage() {
+//     const used = process.memoryUsage();
+//     const maxHeapSize = used.heapTotal * 0.9; // 90% threshold
+
+//     if (used.heapUsed > maxHeapSize) {
+//       console.warn('Memory pressure detected - dropping frames');
+//       // Clear half the queue
+//       this.frameQueue.splice(0, Math.floor(this.frameQueue.length / 2));
+//     }
+//   }
+// }
+
+// class DemoRecorder {
+//   private browser?: puppeteer.Browser;
+//   private page?: puppeteer.Page;
+//   private recorder?: CustomScreenRecorder;
+//   private mouseActions?: MouseActions;
+//   private inputActions?: InputActions;
+//   private selectActions?: SelectActions;
+
+//   constructor(private config: DemoConfig) { }
+
+//   async initialize() {
+//     this.browser = await puppeteer.launch({
+//       headless: false,
+//       defaultViewport: this.config.project.viewport
+//     });
+
+//     this.page = await this.browser.newPage();
+
+//     this.mouseActions = MouseActions.getInstance(this.page);
+//     this.recorder = new CustomScreenRecorder(this.page);
+//     this.inputActions = new InputActions(this.page);
+//     this.selectActions = new SelectActions(this.page);
+//   }
+
+//   async executeStep(step: any) {
+//     if (!this.page || !this.mouseActions || !this.inputActions || !this.selectActions) {
+//       throw new Error('Recorder not properly initialized');
+//     }
+
+//     try {
+//       console.log(`Executing step: ${step.type}`);
+
+//       switch (step.type) {
+//         case 'navigate':
+//           console.log(`Navigating to: ${this.config.project.baseUrl}${step.path}`);
+//           await this.page.goto(`${this.config.project.baseUrl}${step.path}`, {
+//             waitUntil: ['networkidle0', 'load']
+//           });
+//           // Give the page time to stabilize after navigation
+//           await delay(500);
+//           break;
+
+//         case 'input':
+//           console.log(`Typing into: ${step.selector}`);
+//           const typeConfig = {
+//             ...this.config.recording.defaultTypeConfig,
+//             ...step.typeConfig
+//           };
+//           await this.inputActions.typeText(step.selector!, step.value!, {
+//             isTextarea: step.selector?.includes('textarea'),
+//             delay: typeConfig.slowType ? (typeConfig.typeDelay || 150) : 0
+//           });
+//           break;
+
+//         case 'select':
+//           console.log(`Selecting from: ${step.selector}`);
+//           await this.selectActions.select(step.selector!, step.option!);
+//           break;
+
+//         case 'click':
+//           console.log(`Clicking: ${step.selector}`);
+//           await this.mouseActions.click(step.selector!);
+//           break;
+
+//         case 'wait':
+//           console.log(`Waiting: ${step.duration}ms`);
+//           await delay(step.duration || 1000);
+//           break;
+
+//         case 'scrollDown':
+//           console.log(`Scrolling: ${step.pixels}px`);
+//           await this.mouseActions?.smoothScroll(
+//             step.pixels,
+//             step.duration || 1000
+//           );
+//           break;
+
+//         case 'startRecording':
+//           if (!this.recorder) throw new Error('Recorder not initialized');
+//           await this.recorder.start(this.config.recording.output);
+//           break;
+
+//         case 'stopRecording':
+//           if (!this.recorder) throw new Error('Recorder not initialized');
+//           await this.recorder.stop();
+//           break;
+
+//         case 'pauseRecording':
+//           if (!this.recorder) throw new Error('Recorder not initialized');
+//           await this.recorder.pause();
+//           break;
+
+//         case 'resumeRecording':
+//           if (!this.recorder) throw new Error('Recorder not initialized');
+//           await this.recorder.resume();
+//           break;
+
+//         default:
+//           console.warn(`Unknown step type: ${step.type}`);
+//       }
+//     } catch (error) {
+//       console.error(`Error executing step ${step.type}:`, error);
+//       throw error;
+//     }
+//   }
+
+//   async record() {
+//     try {
+//       await this.initialize();
+//       if (!this.page || !this.recorder) throw new Error('Failed to initialize');
+
+//       // Don't auto-start recording - wait for a startRecording step
+//       for (const step of this.config.steps) {
+//         await this.executeStep(step);
+//       }
+
+//       // Only stop if we're still recording at the end
+//       if (this.recorder.getStatus().isRecording) {
+//         console.log('Stopping recording...');
+//         await this.recorder.stop();
+//       }
+//     } catch (error) {
+//       console.error('Recording error:', error);
+//       throw error;
+//     } finally {
+//       if (this.browser) {
+//         await this.browser.close();
+//       }
+//     }
+//   }
+// }
+
+// export { CustomScreenRecorder, DemoRecorder };
+]]></content>
+          </file>
+        
+          <file>
+            <path>src/recorder/core/DemoRecorder.ts</path>
+            <content><![CDATA[// src/recorder/core/DemoRecorder.ts
+
+import * as puppeteer from 'puppeteer';
+import { MouseActions } from '../../actions/MouseActions';
+import { InputActions } from '../../actions/InputActions';
+import { SelectActions } from '../../actions/SelectActions';
+import { ScreenRecorder } from './ScreenRecorder';
+import { delay } from '../../utils/delay';
+import { DemoConfig } from '../types';
+import { MetricsLogger } from '../metrics/MetricsLogger';
+
+export class DemoRecorder {
   private browser?: puppeteer.Browser;
   private page?: puppeteer.Page;
-  private recorder?: CustomScreenRecorder;
+  private recorder?: ScreenRecorder;
   private mouseActions?: MouseActions;
   private inputActions?: InputActions;
   private selectActions?: SelectActions;
 
   constructor(private config: DemoConfig) { }
 
-  async initialize() {
+  async initialize(): Promise<void> {
     this.browser = await puppeteer.launch({
       headless: false,
       defaultViewport: this.config.project.viewport
@@ -355,31 +876,30 @@ class DemoRecorder {
     this.page = await this.browser.newPage();
 
     this.mouseActions = MouseActions.getInstance(this.page);
-    this.recorder = new CustomScreenRecorder(this.page);
+    this.recorder = new ScreenRecorder(this.page);
     this.inputActions = new InputActions(this.page);
     this.selectActions = new SelectActions(this.page);
   }
 
-  async executeStep(step: any) {
+  async executeStep(step: any): Promise<void> {
     if (!this.page || !this.mouseActions || !this.inputActions || !this.selectActions) {
       throw new Error('Recorder not properly initialized');
     }
 
     try {
-      console.log(`Executing step: ${step.type}`);
+      MetricsLogger.logInfo(`Executing step: ${step.type}`);
 
       switch (step.type) {
         case 'navigate':
-          console.log(`Navigating to: ${this.config.project.baseUrl}${step.path}`);
+          MetricsLogger.logInfo(`Navigating to: ${this.config.project.baseUrl}${step.path}`);
           await this.page.goto(`${this.config.project.baseUrl}${step.path}`, {
             waitUntil: ['networkidle0', 'load']
           });
-          // Give the page time to stabilize after navigation
-          await delay(500);
+          await delay(500); // Stabilization delay
           break;
 
         case 'input':
-          console.log(`Typing into: ${step.selector}`);
+          MetricsLogger.logInfo(`Typing into: ${step.selector}`);
           const typeConfig = {
             ...this.config.recording.defaultTypeConfig,
             ...step.typeConfig
@@ -391,22 +911,22 @@ class DemoRecorder {
           break;
 
         case 'select':
-          console.log(`Selecting from: ${step.selector}`);
+          MetricsLogger.logInfo(`Selecting from: ${step.selector}`);
           await this.selectActions.select(step.selector!, step.option!);
           break;
 
         case 'click':
-          console.log(`Clicking: ${step.selector}`);
+          MetricsLogger.logInfo(`Clicking: ${step.selector}`);
           await this.mouseActions.click(step.selector!);
           break;
 
         case 'wait':
-          console.log(`Waiting: ${step.duration}ms`);
+          MetricsLogger.logInfo(`Waiting: ${step.duration}ms`);
           await delay(step.duration || 1000);
           break;
 
         case 'scrollDown':
-          console.log(`Scrolling: ${step.pixels}px`);
+          MetricsLogger.logInfo(`Scrolling: ${step.pixels}px`);
           await this.mouseActions?.smoothScroll(
             step.pixels,
             step.duration || 1000
@@ -434,31 +954,40 @@ class DemoRecorder {
           break;
 
         default:
-          console.warn(`Unknown step type: ${step.type}`);
+          MetricsLogger.logWarning(`Unknown step type: ${step.type}`);
       }
     } catch (error) {
-      console.error(`Error executing step ${step.type}:`, error);
+      MetricsLogger.logError(error as Error, `Executing step ${step.type}`);
       throw error;
     }
   }
 
-  async record() {
+  async record(): Promise<void> {
     try {
       await this.initialize();
       if (!this.page || !this.recorder) throw new Error('Failed to initialize');
-
-      // Don't auto-start recording - wait for a startRecording step
+      
+      const startTime = Date.now();
+      
       for (const step of this.config.steps) {
         await this.executeStep(step);
       }
 
-      // Only stop if we're still recording at the end
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+
+      MetricsLogger.logInfo('Stopping recording...');
+      // Log final recording stats
+      MetricsLogger.logInfo('=== Recording Summary ===');
+      MetricsLogger.logInfo(`Total Duration: ${(duration / 1000).toFixed(2)} seconds`);
+      MetricsLogger.logInfo(`Steps Executed: ${this.config.steps.length}`);
+      MetricsLogger.logInfo('=======================');
+
       if (this.recorder.getStatus().isRecording) {
-        console.log('Stopping recording...');
         await this.recorder.stop();
       }
     } catch (error) {
-      console.error('Recording error:', error);
+      MetricsLogger.logError(error as Error, 'Recording');
       throw error;
     } finally {
       if (this.browser) {
@@ -467,8 +996,148 @@ class DemoRecorder {
     }
   }
 }
+]]></content>
+          </file>
+        
+          <file>
+            <path>src/utils/mouse-helper.ts</path>
+            <content><![CDATA[// src/utils/mouse-helper.ts
+import { Page } from 'puppeteer';
+import * as fs from 'fs';
+import { delay } from './delay';
 
-export { CustomScreenRecorder, DemoRecorder };
+export class MouseHelper {
+  private static instance: MouseHelper;
+  private initialized: boolean = false;
+  private initPromise: Promise<void> | null = null;
+  private mouseHelperContent: string | null = null;
+
+  private constructor() { }
+
+  static getInstance(): MouseHelper {
+    if (!MouseHelper.instance) {
+      MouseHelper.instance = new MouseHelper();
+    }
+    return MouseHelper.instance;
+  }
+
+  private async loadMouseHelperContent() {
+    if (this.mouseHelperContent) return;
+
+    try {
+      const mouseHelperPath = require.resolve('mouse-helper/dist/mouse-helper.js');
+      this.mouseHelperContent = fs.readFileSync(mouseHelperPath, 'utf8');
+      console.log('Mouse helper content loaded, length:', this.mouseHelperContent.length);
+    } catch (error) {
+      console.error('Failed to load mouse helper content:', error);
+      throw error;
+    }
+  }
+
+  private async initializePage(page: Page): Promise<void> {
+    if (!this.mouseHelperContent) {
+      await this.loadMouseHelperContent();
+    }
+
+    await page.evaluateOnNewDocument(`
+      window.self = window;
+      ${this.mouseHelperContent}
+      
+      function initMouseHelper() {
+        console.log('InitMouseHelper called, state:', {
+          hasHelper: typeof window['mouse-helper'] === 'function',
+          readyState: document.readyState
+        });
+
+        if (typeof window['mouse-helper'] === 'function') {
+          try {
+            window['mouse-helper']();
+            console.log('Mouse helper initialized successfully');
+          } catch (error) {
+            console.error('Mouse helper initialization failed:', error);
+          }
+        }
+      }
+
+      // Initialize on page load
+      if (document.readyState === 'complete') {
+        console.log('Document ready, initializing immediately');
+        initMouseHelper();
+      } else {
+        console.log('Document not ready, waiting for load');
+        window.addEventListener('load', initMouseHelper);
+      }
+
+      // Backup initialization after a short delay
+      setTimeout(() => {
+        console.log('Backup initialization triggered');
+        initMouseHelper();
+      }, 500);
+    `);
+  }
+
+  async ensureInitialized(page: Page): Promise<boolean> {
+    if (this.initPromise) {
+      await this.initPromise;
+      return this.initialized;
+    }
+
+    this.initPromise = this.initialize(page);
+    try {
+      await this.initPromise;
+      return this.initialized;
+    } finally {
+      this.initPromise = null;
+    }
+  }
+
+  private async initialize(page: Page): Promise<void> {
+    if (this.initialized) return;
+
+    try {
+      await this.loadMouseHelperContent();
+      await this.initializePage(page);
+
+      // Try to initialize up to 3 times
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const isHelperPresent = await page.evaluate(() => {
+            return typeof window['mouse-helper'] === 'function';
+          });
+
+          if (isHelperPresent) {
+            await page.evaluate(() => {
+              window['mouse-helper']();
+            });
+
+            const helperElement = await page.$('.mouse-helper');
+            if (helperElement) {
+              console.log('Mouse helper initialized successfully on attempt', attempt + 1);
+              this.initialized = true;
+              return;
+            }
+          }
+
+          if (attempt < 2) {
+            await delay(100);
+          }
+        } catch (error) {
+          console.warn(`Mouse helper init attempt ${attempt + 1} failed:`, error);
+          if (attempt === 2) throw error;
+        }
+      }
+    } catch (error) {
+      console.error('Mouse helper initialization failed:', error);
+      throw error;
+    }
+  }
+
+  async reinitialize(page: Page): Promise<void> {
+    this.initialized = false;
+    this.initPromise = null;
+    await this.ensureInitialized(page);
+  }
+}
 ]]></content>
           </file>
         
