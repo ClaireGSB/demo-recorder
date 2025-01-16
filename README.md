@@ -135,7 +135,7 @@ value = "Include specific examples and use cases"
 ```
 
 ## Step Types
-*### navigate
+### navigate
 - **description**: Navigates to a specified path.
 
 ### input

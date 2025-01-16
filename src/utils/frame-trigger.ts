@@ -40,6 +40,7 @@ export class FrameTrigger {
   private isInitialized: boolean = false;
   private page: Page | null = null;
   private targetFps: number = 60;
+  private initializationPromise: Promise<void> | null = null;
 
   private constructor() { }
 
@@ -57,9 +58,22 @@ export class FrameTrigger {
     // Set up navigation listener
     page.on('framenavigated', async frame => {
       if (frame === page.mainFrame()) {
-        MetricsLogger.logInfo('Main frame navigated, reinitializing frame trigger');
+        MetricsLogger.logInfo('Main frame navigated, scheduling frame trigger reinitialization');
         this.isInitialized = false;
-        await this.initializeTriggers();
+
+        // Wait for the next tick to ensure the new execution context is ready
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        // Wait for the page to be ready
+        try {
+          await page.waitForFunction(() => document.readyState === 'complete', {
+            timeout: 5000,
+            polling: 100
+          });
+          await this.initializeTriggers();
+        } catch (error) {
+          MetricsLogger.logError(error as Error, 'Frame trigger reinitialization after navigation');
+        }
       }
     });
 
@@ -69,99 +83,126 @@ export class FrameTrigger {
   private async initializeTriggers(): Promise<void> {
     if (!this.page || this.isInitialized) return;
 
-    try {
-      // Pass targetFps into the evaluate function
-      await this.page.evaluate((fps) => {
-        console.log('Initializing frame trigger with FPS:', fps);
-        // Create multiple triggers with different animation characteristics
-        const createTrigger = (id: string, config: any) => {
-          const trigger = document.createElement('div');
-          trigger.id = `frame-trigger-${id}`;
-          trigger.style.cssText = `
-            position: fixed;
-            background: transparent;
-            mix-blend-mode: difference;
-            backdrop-filter: none;
-            width: 2px;
-            height: 2px;
-            opacity: 0.01;
-            pointer-events: none;
-            transform: translateZ(0);
-            will-change: transform, opacity;
-            z-index: 2147483647;
-          `;
-
-          // Position each trigger in a different corner
-          switch (id) {
-            case 'top-left':
-              trigger.style.top = '0px';
-              trigger.style.left = '0px';
-              break;
-            case 'top-right':
-              trigger.style.top = '0px';
-              trigger.style.right = '0px';
-              break;
-            case 'bottom-left':
-              trigger.style.bottom = '0px';
-              trigger.style.left = '0px';
-              break;
-            case 'bottom-right':
-              trigger.style.bottom = '0px';
-              trigger.style.right = '0px';
-              break;
-          }
-
-          document.body.appendChild(trigger);
-          return trigger;
-        };
-
-        // Create four triggers in different corners
-        const triggers = {
-          topLeft: createTrigger('top-left', { frequency: 1.0 }),
-          topRight: createTrigger('top-right', { frequency: 1.5 }),
-          bottomLeft: createTrigger('bottom-left', { frequency: 2.0 }),
-          bottomRight: createTrigger('bottom-right', { frequency: 2.5 })
-        };
-
-        let lastFrame = performance.now();
-        const frameInterval = 1000 / fps; // Use passed fps parameter
-
-        const animate = () => {
-          const now = performance.now();
-          const delta = now - lastFrame;
-
-          if (delta >= frameInterval) {
-            lastFrame = now - (delta % frameInterval);
-
-            // Get current time in seconds
-            const time = now / 1000;
-
-            // Different animation patterns for each trigger
-            triggers.topLeft.style.opacity = (Math.sin(time) * 0.004 + 0.01).toString();
-            triggers.topLeft.style.transform = `translateZ(0) scale(${0.99 + Math.sin(time) * 0.01})`;
-
-            triggers.topRight.style.opacity = (Math.cos(time * 1.5) * 0.004 + 0.01).toString();
-            triggers.topRight.style.transform = `translateZ(0) rotate(${Math.sin(time) * 0.5}deg)`;
-
-            triggers.bottomLeft.style.opacity = (Math.sin(time * 2) * 0.004 + 0.01).toString();
-            triggers.bottomLeft.style.transform = `translateZ(0) translate(${Math.cos(time) * 0.5}px, 0)`;
-
-            triggers.bottomRight.style.opacity = (Math.cos(time * 2.5) * 0.004 + 0.01).toString();
-            triggers.bottomRight.style.transform = `translateZ(0) skew(${Math.sin(time) * 0.2}deg)`;
-          }
-
-          requestAnimationFrame(animate);
-        };
-
-        // Start animation
-        requestAnimationFrame(animate);
-      }, this.targetFps); // Pass targetFps as an argument to evaluate
-
-      this.isInitialized = true;
-      MetricsLogger.logInfo('Frame trigger initialized successfully');
-    } catch (error) {
-      MetricsLogger.logError(error as Error, 'Frame trigger initialization');
-      throw error;
+    // If there's already an initialization in progress, wait for it
+    if (this.initializationPromise) {
+      try {
+        await this.initializationPromise;
+        return;
+      } catch (error) {
+        // Previous initialization failed, continue with new attempt
+        MetricsLogger.logError(error as Error, 'Previous frame trigger initialization failed');
+      }
     }
+
+    this.initializationPromise = (async () => {
+      try {
+        // Check if the page is still valid
+        if (this.page && !this.page.isClosed()) {
+          await this.page.evaluate((fps) => {
+            // Only create triggers if they don't already exist
+            if (!document.getElementById('frame-trigger-top-left')) {
+              console.log('Initializing frame trigger with FPS:', fps);
+              
+              const createTrigger = (id: string) => {
+                const trigger = document.createElement('div');
+                trigger.id = `frame-trigger-${id}`;
+                trigger.style.cssText = `
+                  position: fixed;
+                  background: transparent;
+                  mix-blend-mode: difference;
+                  backdrop-filter: none;
+                  width: 2px;
+                  height: 2px;
+                  opacity: 0.01;
+                  pointer-events: none;
+                  transform: translateZ(0);
+                  will-change: transform, opacity;
+                  z-index: 2147483647;
+                `;
+
+                switch (id) {
+                  case 'top-left':
+                    trigger.style.top = '0px';
+                    trigger.style.left = '0px';
+                    break;
+                  case 'top-right':
+                    trigger.style.top = '0px';
+                    trigger.style.right = '0px';
+                    break;
+                  case 'bottom-left':
+                    trigger.style.bottom = '0px';
+                    trigger.style.left = '0px';
+                    break;
+                  case 'bottom-right':
+                    trigger.style.bottom = '0px';
+                    trigger.style.right = '0px';
+                    break;
+                }
+
+                document.body.appendChild(trigger);
+                return trigger;
+              };
+
+              const triggers = {
+                topLeft: createTrigger('top-left'),
+                topRight: createTrigger('top-right'),
+                bottomLeft: createTrigger('bottom-left'),
+                bottomRight: createTrigger('bottom-right')
+              };
+
+              let lastFrame = performance.now();
+              const frameInterval = 1000 / fps;
+
+              const animate = () => {
+                const now = performance.now();
+                const delta = now - lastFrame;
+
+                if (delta >= frameInterval) {
+                  lastFrame = now - (delta % frameInterval);
+                  const time = now / 1000;
+
+                  // Batch DOM updates
+                  window.requestAnimationFrame(() => {
+                    triggers.topLeft.style.cssText += `
+                      opacity: ${Math.sin(time) * 0.004 + 0.01};
+                      transform: translateZ(0) scale(${0.99 + Math.sin(time) * 0.01});
+                    `;
+
+                    triggers.topRight.style.cssText += `
+                      opacity: ${Math.cos(time * 1.5) * 0.004 + 0.01};
+                      transform: translateZ(0) rotate(${Math.sin(time) * 0.5}deg);
+                    `;
+
+                    triggers.bottomLeft.style.cssText += `
+                      opacity: ${Math.sin(time * 2) * 0.004 + 0.01};
+                      transform: translateZ(0) translate(${Math.cos(time) * 0.5}px, 0);
+                    `;
+
+                    triggers.bottomRight.style.cssText += `
+                      opacity: ${Math.cos(time * 2.5) * 0.004 + 0.01};
+                      transform: translateZ(0) skew(${Math.sin(time) * 0.2}deg);
+                    `;
+                  });
+                }
+
+                requestAnimationFrame(animate);
+              };
+
+              requestAnimationFrame(animate);
+            }
+          }, this.targetFps);
+
+          this.isInitialized = true;
+          MetricsLogger.logInfo('Frame trigger initialized successfully');
+        }
+      } catch (error) {
+        MetricsLogger.logError(error as Error, 'Frame trigger initialization');
+        throw error;
+      } finally {
+        this.initializationPromise = null;
+      }
+    })();
+
+    await this.initializationPromise;
   }
 }
