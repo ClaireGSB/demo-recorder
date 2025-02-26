@@ -61,6 +61,9 @@ export interface ProjectConfig {
   name: string;
   baseUrl: string;
   viewport: ViewportDimensions;
+  mouseHelper?: {
+    color?: string; // Hex color code for mouse clicks
+  };
 }
 
 export interface AuthConfig {

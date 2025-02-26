@@ -23,6 +23,7 @@ export class MouseActions {
   private isMoving: boolean = false;
   private lastKnownPosition: { x: number, y: number } = { x: 0, y: 0 };
   private scrollOffset: number = 0;
+  private mouseColor: string | null = null;
 
   private constructor(private page: Page) {
     console.log('MouseActions initialized with position:', this.lastKnownPosition);
@@ -32,11 +33,119 @@ export class MouseActions {
     });
   }
 
-  static getInstance(page: Page): MouseActions {
+  static getInstance(page: Page, mouseColor?: string): MouseActions {
     if (!MouseActions.instance) {
       MouseActions.instance = new MouseActions(page);
     }
+    
+    // Set mouse color if provided
+    if (mouseColor) {
+      MouseActions.instance.setMouseColor(mouseColor);
+      console.log('Mouse color set in MouseActions:', mouseColor);
+    }
+    
     return MouseActions.instance;
+  }
+  
+  setMouseColor(color: string): void {
+    this.mouseColor = color;
+    console.log('Setting mouse color in MouseActions:', color);
+    
+    // Apply the color to the page
+    this.applyMouseColor();
+  }
+  
+  private applyMouseColor(): void {
+    if (!this.mouseColor || !this.page) return;
+
+    console.log('Applying mouse color:', this.mouseColor);
+    
+    // Inspect the mouse-helper structure after it's loaded
+    this.page.on('domcontentloaded', async () => {
+      console.log('Page loaded, checking mouse-helper structure...');
+      setTimeout(async () => {
+        try {
+          const mouseHelperInfo = await this.page.evaluate(() => {
+            const container = document.querySelector('.mouse-helper-container');
+            if (!container) return { exists: false, message: 'No container found' };
+            
+            const images = container.querySelectorAll('img');
+            const result = {
+              exists: true,
+              imageCount: images.length,
+              images: Array.from(images).map((img, i) => ({
+                index: i,
+                src: img.src.substring(0, 100) + '...',
+                classes: img.className,
+                styles: img.getAttribute('style')
+              }))
+            };
+            
+            return result;
+          });
+          
+          console.log('Mouse helper structure:', JSON.stringify(mouseHelperInfo, null, 2));
+        } catch (error) {
+          console.error('Error inspecting mouse helper:', error);
+        }
+      }, 2000);
+    });
+    
+    // Add a function to the page that will modify the mouse helper elements when they appear
+    this.page.evaluateOnNewDocument((colorToApply) => {
+      console.log('Setting up mouse color observer with color:', colorToApply);
+      
+      // Function that attempts to modify the mouse helper elements
+      function modifyMouseHelper() {
+        const container = document.querySelector('.mouse-helper-container');
+        if (!container) return false;
+        
+        console.log('Found mouse-helper container, modifying with color:', colorToApply);
+        
+        // Find all images in the container
+        const images = container.querySelectorAll('img');
+        
+        // Modify the images with our custom color using CSS
+        const styleEl = document.createElement('style');
+        styleEl.textContent = `
+          .mouse-helper-container img {
+            filter: hue-rotate(194deg) saturate(1.5) !important;
+          }
+        `;
+        document.head.appendChild(styleEl);
+        
+        console.log('Added custom styles for mouse helper');
+        return true;
+      }
+      
+      // Try immediately
+      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(modifyMouseHelper, 500);
+      }
+      
+      // Also try when the DOM is loaded
+      document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(modifyMouseHelper, 500);
+      });
+      
+      // Set up a MutationObserver to watch for the mouse helper being added to the DOM
+      const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.addedNodes.length) {
+            if (modifyMouseHelper()) {
+              observer.disconnect();
+              break;
+            }
+          }
+        }
+      });
+      
+      // Start observing
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    }, this.mouseColor);
   }
 
   async moveTo(targetX: number, targetY: number, options: MouseMoveOptions = {}): Promise<void> {
