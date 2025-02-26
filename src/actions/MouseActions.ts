@@ -2,6 +2,8 @@
 import { Page } from 'puppeteer';
 import { delay } from '../utils/delay';
 import { MouseHelper } from '../utils/mouse-helper';
+import { createMouseColorModifier } from '../utils/color-utils';
+
 
 declare global {
   interface Window {
@@ -23,6 +25,7 @@ export class MouseActions {
   private isMoving: boolean = false;
   private lastKnownPosition: { x: number, y: number } = { x: 0, y: 0 };
   private scrollOffset: number = 0;
+  private mouseColor: string | null = null;
 
   private constructor(private page: Page) {
     console.log('MouseActions initialized with position:', this.lastKnownPosition);
@@ -32,11 +35,36 @@ export class MouseActions {
     });
   }
 
-  static getInstance(page: Page): MouseActions {
+  static getInstance(page: Page, mouseColor?: string): MouseActions {
     if (!MouseActions.instance) {
       MouseActions.instance = new MouseActions(page);
     }
+    
+    // Set mouse color if provided
+    if (mouseColor) {
+      MouseActions.instance.setMouseColor(mouseColor);
+    }
+    
     return MouseActions.instance;
+  }
+  
+  setMouseColor(color: string): void {
+    this.mouseColor = color;
+    
+    // Apply the color to the page
+    this.applyMouseColor();
+  }
+  
+  private applyMouseColor(): void {
+    if (!this.mouseColor || !this.page) return;
+    
+    // Create a color modifier with our target color
+    const colorModifier = createMouseColorModifier(this.mouseColor);
+    
+    // Apply the color to the page
+    colorModifier.applyToPage(this.page).catch(error => {
+      console.warn('Failed to apply mouse color:', error);
+    });
   }
 
   async moveTo(targetX: number, targetY: number, options: MouseMoveOptions = {}): Promise<void> {
