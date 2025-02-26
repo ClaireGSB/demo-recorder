@@ -77,6 +77,9 @@ baseUrl = "http://localhost:3000"
 width = 1280
 height = 800
 
+[project.cursor]
+mouseDownColor = "#3498db"
+
 # Authentication (optional)
 [auth]
 email = "${DEMO_USER_EMAIL}"
