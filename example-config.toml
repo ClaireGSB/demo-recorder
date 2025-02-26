@@ -7,7 +7,7 @@ baseUrl = "http://localhost:3001"
 width = 1280
 height = 800
 
-[project.mouseHelper]
+[project.cursor]
 color = "#3498db"
 
 # Authentication settings (using environment variables)

@@ -30,7 +30,7 @@ export class DemoRecorder {
 
     this.page = await this.browser.newPage();
 
-    const mouseColor = this.config.project.mouseHelper?.color;
+    const mouseColor = this.config.project.cursor?.mouseDownColor;
     
     if (mouseColor) {
       this.mouseActions = MouseActions.getInstance(this.page, mouseColor);

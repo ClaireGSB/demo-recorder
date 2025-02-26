@@ -61,8 +61,8 @@ export interface ProjectConfig {
   name: string;
   baseUrl: string;
   viewport: ViewportDimensions;
-  mouseHelper?: {
-    color?: string; // Hex color code for mouse clicks
+  cursor?: {
+    mouseDownColor?: string; // Hex color code for mouse clicks
   };
 }
 
