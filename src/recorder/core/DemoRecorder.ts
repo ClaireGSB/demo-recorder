@@ -30,16 +30,11 @@ export class DemoRecorder {
 
     this.page = await this.browser.newPage();
 
-    // Get the mouse color if configured
     const mouseColor = this.config.project.mouseHelper?.color;
-    console.log('Mouse color from config:', mouseColor);
     
     if (mouseColor) {
-      // Initialize MouseActions with the color
-      console.log('Creating MouseActions with color:', mouseColor);
       this.mouseActions = MouseActions.getInstance(this.page, mouseColor);
     } else {
-      console.log('Creating MouseActions with default color');
       this.mouseActions = MouseActions.getInstance(this.page);
     }
 

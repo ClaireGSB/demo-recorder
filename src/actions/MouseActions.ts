@@ -41,7 +41,6 @@ export class MouseActions {
     // Set mouse color if provided
     if (mouseColor) {
       MouseActions.instance.setMouseColor(mouseColor);
-      console.log('Mouse color set in MouseActions:', mouseColor);
     }
     
     return MouseActions.instance;
@@ -49,7 +48,6 @@ export class MouseActions {
   
   setMouseColor(color: string): void {
     this.mouseColor = color;
-    console.log('Setting mouse color in MouseActions:', color);
     
     // Apply the color to the page
     this.applyMouseColor();
@@ -57,53 +55,13 @@ export class MouseActions {
   
   private applyMouseColor(): void {
     if (!this.mouseColor || !this.page) return;
-
-    console.log('Applying mouse color:', this.mouseColor);
-    
-    // Inspect the mouse-helper structure after it's loaded
-    this.page.on('domcontentloaded', async () => {
-      console.log('Page loaded, checking mouse-helper structure...');
-      setTimeout(async () => {
-        try {
-          const mouseHelperInfo = await this.page.evaluate(() => {
-            const container = document.querySelector('.mouse-helper-container');
-            if (!container) return { exists: false, message: 'No container found' };
-            
-            const images = container.querySelectorAll('img');
-            const result = {
-              exists: true,
-              imageCount: images.length,
-              images: Array.from(images).map((img, i) => ({
-                index: i,
-                src: img.src.substring(0, 100) + '...',
-                classes: img.className,
-                styles: img.getAttribute('style')
-              }))
-            };
-            
-            return result;
-          });
-          
-          console.log('Mouse helper structure:', JSON.stringify(mouseHelperInfo, null, 2));
-        } catch (error) {
-          console.error('Error inspecting mouse helper:', error);
-        }
-      }, 2000);
-    });
     
     // Add a function to the page that will modify the mouse helper elements when they appear
     this.page.evaluateOnNewDocument((colorToApply) => {
-      console.log('Setting up mouse color observer with color:', colorToApply);
-      
       // Function that attempts to modify the mouse helper elements
       function modifyMouseHelper() {
         const container = document.querySelector('.mouse-helper-container');
         if (!container) return false;
-        
-        console.log('Found mouse-helper container, modifying with color:', colorToApply);
-        
-        // Find all images in the container
-        const images = container.querySelectorAll('img');
         
         // Modify the images with our custom color using CSS
         const styleEl = document.createElement('style');
@@ -113,8 +71,6 @@ export class MouseActions {
           }
         `;
         document.head.appendChild(styleEl);
-        
-        console.log('Added custom styles for mouse helper');
         return true;
       }
       
