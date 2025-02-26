@@ -2,6 +2,8 @@
 import { Page } from 'puppeteer';
 import { delay } from '../utils/delay';
 import { MouseHelper } from '../utils/mouse-helper';
+import { hexToHSL, calculateHueRotation, calculateSaturationAdjustment } from '../utils/color-utils';
+
 
 declare global {
   interface Window {
@@ -56,8 +58,12 @@ export class MouseActions {
   private applyMouseColor(): void {
     if (!this.mouseColor || !this.page) return;
     
+    // Calculate the filter values using our utility functions
+    const hueRotation = calculateHueRotation(this.mouseColor);
+    const saturationFactor = calculateSaturationAdjustment(this.mouseColor);
+    
     // Add a function to the page that will modify the mouse helper elements when they appear
-    this.page.evaluateOnNewDocument((colorToApply) => {
+    this.page.evaluateOnNewDocument((hueRotateValue, saturateValue) => {
       // Function that attempts to modify the mouse helper elements
       function modifyMouseHelper() {
         const container = document.querySelector('.mouse-helper-container');
@@ -67,7 +73,7 @@ export class MouseActions {
         const styleEl = document.createElement('style');
         styleEl.textContent = `
           .mouse-helper-container img {
-            filter: hue-rotate(194deg) saturate(1.5) !important;
+            filter: hue-rotate(${hueRotateValue}deg) saturate(${saturateValue}) !important;
           }
         `;
         document.head.appendChild(styleEl);
@@ -101,9 +107,9 @@ export class MouseActions {
         childList: true,
         subtree: true
       });
-    }, this.mouseColor);
+    }, hueRotation, saturationFactor);
   }
-
+  
   async moveTo(targetX: number, targetY: number, options: MouseMoveOptions = {}): Promise<void> {
     const {
       minSteps = 35,  // Increased for smoother movement
