@@ -97,8 +97,10 @@ type = "navigate"
 path = "/login"
 
 [[steps]]
-type = "wait"
-duration = 1000
+type = "waitForSelector"
+selector = ".login-form"
+timeout = 15000  # Wait up to 15 seconds (optional)
+visible = true   # Wait for it to be visible, not just in DOM (optional)
 
 [[steps]]
 type = "input"
@@ -164,6 +166,12 @@ NOTE: it seems like we need a different format if the selector is a class... To 
 
 ### wait
 - **description**: Waits for a specified duration in milliseconds.
+
+### waitForSelector
+- **description**: Waits until a specified element is present in the DOM.
+- **selector**: CSS selector of the element to wait for.
+- **timeout**: (Optional) Maximum time to wait in milliseconds. Defaults to 30000 (30 seconds).
+- **visible**: (Optional) Whether to wait for the element to be visible, not just present in DOM. Defaults to true.
 
 ### scrollDown
 - **description**: Scrolls down a specific number of pixels over a duration.
