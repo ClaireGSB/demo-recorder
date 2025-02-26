@@ -58,28 +58,56 @@ export class MouseActions {
   private applyMouseColor(): void {
     if (!this.mouseColor || !this.page) return;
     
-    // Calculate the filter values using our utility functions
-    const hueRotation = calculateHueRotation(this.mouseColor);
-    const saturationFactor = calculateSaturationAdjustment(this.mouseColor);
-    
-    // Add a function to the page that will modify the mouse helper elements when they appear
-    this.page.evaluateOnNewDocument((hueRotateValue, saturateValue) => {
+    // Instead of applying filters, we'll directly modify the SVG elements
+    this.page.evaluateOnNewDocument((targetColor) => {
       // Function that attempts to modify the mouse helper elements
       function modifyMouseHelper() {
+        // Look for the SVG elements within the mouse-helper container
         const container = document.querySelector('.mouse-helper-container');
         if (!container) return false;
         
-        // Modify the images with our custom color using CSS
-        const styleEl = document.createElement('style');
-        styleEl.textContent = `
-          .mouse-helper-container img {
-            filter: hue-rotate(${hueRotateValue}deg) saturate(${saturateValue}) !important;
-          }
-        `;
-        document.head.appendChild(styleEl);
+        // Try to find both the image and potentially any directly embedded SVG
+        const helperImg = container.querySelector('img');
+        const helperSvg = container.querySelector('svg');
+        
+        if (helperImg && !helperSvg) {
+          // If we only have the img element but not direct SVG access,
+          // we need to replace it with our own SVG that we can control
+          
+          // Create inline SVG with the custom color
+          const svgContent = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+              <circle fill="${targetColor}" cx="16" cy="16" r="10" />
+              <circle stroke="${targetColor}" fill="none" stroke-width="2" cx="16" cy="16" r="14" />
+            </svg>
+          `;
+          
+          // Create a data URL from the SVG content
+          const svgDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgContent);
+          
+          // Replace the image src with our custom SVG
+          helperImg.setAttribute('src', svgDataUrl);
+          
+          // Remove any filters that might have been applied previously
+          helperImg.style.filter = 'none';
+        } 
+        else if (helperSvg) {
+          // If we have direct access to the SVG, modify its elements
+          const circles = helperSvg.querySelectorAll('circle');
+          circles.forEach(circle => {
+            if (circle.getAttribute('fill') === 'red' || circle.getAttribute('fill') === '#ff0000') {
+              circle.setAttribute('fill', targetColor);
+            }
+            if (circle.getAttribute('stroke') === 'red' || circle.getAttribute('stroke') === '#ff0000') {
+              circle.setAttribute('stroke', targetColor);
+            }
+          });
+        }
+        
         return true;
       }
       
+      // Similar observer setup as before
       // Try immediately
       if (document.readyState === 'complete' || document.readyState === 'interactive') {
         setTimeout(modifyMouseHelper, 500);
@@ -107,9 +135,9 @@ export class MouseActions {
         childList: true,
         subtree: true
       });
-    }, hueRotation, saturationFactor);
+    }, this.mouseColor);
   }
-  
+
   async moveTo(targetX: number, targetY: number, options: MouseMoveOptions = {}): Promise<void> {
     const {
       minSteps = 35,  // Increased for smoother movement
