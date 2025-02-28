@@ -45,6 +45,7 @@ export type StepType =
   | 'select'
   | 'click'
   | 'wait'
+  | 'waitForSelector'
   | 'scrollDown'
   | 'startRecording'
   | 'stopRecording'
@@ -57,6 +58,14 @@ export interface ScrollStep extends Step {
   duration?: number;  // milliseconds
   moveMouse?: boolean;
 }
+
+export interface WaitForSelectorStep extends Step {
+  type: 'waitForSelector';
+  selector: string;
+  timeout?: number;  // Optional timeout in milliseconds
+  visible?: boolean; // Whether to wait for the element to be visible (not just present)
+}
+
 export interface ProjectConfig {
   name: string;
   baseUrl: string;

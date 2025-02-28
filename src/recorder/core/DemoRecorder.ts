@@ -31,7 +31,7 @@ export class DemoRecorder {
     this.page = await this.browser.newPage();
 
     const mouseColor = this.config.project.cursor?.mouseDownColor;
-    
+
     if (mouseColor) {
       this.mouseActions = MouseActions.getInstance(this.page, mouseColor);
     } else {
@@ -93,6 +93,23 @@ export class DemoRecorder {
         case 'wait':
           MetricsLogger.logInfo(`Waiting: ${step.duration}ms`);
           await delay(step.duration || 1000);
+          break;
+
+        case 'waitForSelector':
+          MetricsLogger.logInfo(`Waiting for selector: ${step.selector}`);
+          const timeout = step.timeout || 30000; // Default to 30 seconds if not specified
+          const visible = step.visible !== undefined ? step.visible : true; // Default to waiting for visibility
+
+          try {
+            await this.page.waitForSelector(step.selector, {
+              timeout: timeout,
+              visible: visible
+            });
+            MetricsLogger.logInfo(`Selector found: ${step.selector}`);
+          } catch (error) {
+            MetricsLogger.logError(error as Error, `Waiting for selector ${step.selector}`);
+            throw new Error(`Timeout (${timeout}ms) waiting for selector: ${step.selector}`);
+          }
           break;
 
         case 'scrollDown':

@@ -8,7 +8,7 @@ width = 1280
 height = 800
 
 [project.cursor]
-color = "#3498db"
+mouseDownColor = "#3498db"
 
 # Authentication settings (using environment variables)
 [auth]
@@ -32,8 +32,10 @@ type = "navigate"
 path = "/login"
 
 [[steps]]
-type = "wait"
-duration = 1000
+type = "waitForSelector"
+selector = ".login-form"
+timeout = 15000  # Wait up to 15 seconds (optional)
+visible = true   # Wait for it to be visible, not just in DOM (optional)
 
 [[steps]]
 type = "startRecording"  # Explicitly start recording before login sequence
