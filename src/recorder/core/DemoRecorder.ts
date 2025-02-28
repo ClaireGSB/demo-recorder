@@ -90,6 +90,19 @@ export class DemoRecorder {
           await this.mouseActions.click(step.selector!);
           break;
 
+        case 'hover':
+          MetricsLogger.logInfo(`Hovering over: ${step.selector}`);
+          const hoverDuration = step.duration || 1000; // Default to 1 second if not specified
+
+          try {
+            await this.mouseActions?.hover(step.selector, hoverDuration);
+            MetricsLogger.logInfo(`Completed hovering over: ${step.selector}`);
+          } catch (error) {
+            MetricsLogger.logError(error as Error, `Hovering over ${step.selector}`);
+            throw new Error(`Failed to hover over ${step.selector}: ${error}`);
+          }
+          break;
+
         case 'wait':
           MetricsLogger.logInfo(`Waiting: ${step.duration}ms`);
           await delay(step.duration || 1000);

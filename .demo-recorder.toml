@@ -54,6 +54,11 @@ path = "/content"
 type = "wait"
 duration = 2000
 
+[[steps]]
+type = "hover"
+selector = "[data-test='content-type-select']"
+duration = 2000
+
 # Select content type
 [[steps]]
 type = "select"

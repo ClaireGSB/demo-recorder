@@ -44,6 +44,7 @@ export type StepType =
   | 'input'
   | 'select'
   | 'click'
+  | 'hover'
   | 'wait'
   | 'waitForSelector'
   | 'scrollDown'
@@ -64,6 +65,12 @@ export interface WaitForSelectorStep extends Step {
   selector: string;
   timeout?: number;  // Optional timeout in milliseconds
   visible?: boolean; // Whether to wait for the element to be visible (not just present)
+}
+
+export interface HoverStep extends Step {
+  type: 'hover';
+  selector: string;
+  duration?: number;
 }
 
 export interface ProjectConfig {

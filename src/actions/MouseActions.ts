@@ -39,28 +39,28 @@ export class MouseActions {
     if (!MouseActions.instance) {
       MouseActions.instance = new MouseActions(page);
     }
-    
+
     // Set mouse color if provided
     if (mouseColor) {
       MouseActions.instance.setMouseColor(mouseColor);
     }
-    
+
     return MouseActions.instance;
   }
-  
+
   setMouseColor(color: string): void {
     this.mouseColor = color;
-    
+
     // Apply the color to the page
     this.applyMouseColor();
   }
-  
+
   private applyMouseColor(): void {
     if (!this.mouseColor || !this.page) return;
-    
+
     // Create a color modifier with our target color
     const colorModifier = createMouseColorModifier(this.mouseColor);
-    
+
     // Apply the color to the page
     colorModifier.applyToPage(this.page).catch(error => {
       console.warn('Failed to apply mouse color:', error);
@@ -240,6 +240,46 @@ export class MouseActions {
       console.log('Scroll completed. New offset:', this.scrollOffset);
     } finally {
 
+      this.isMoving = false;
+    }
+  }
+
+  async hover(selector: string, hoverDuration: number = 1000): Promise<boolean> {
+    if (this.isMoving) {
+      await delay(100);
+    }
+
+    try {
+      this.isMoving = true;
+
+      // Wait for element to be ready
+      const element = await this.page.waitForSelector(selector, { visible: true, timeout: 3000 });
+      if (!element) {
+        console.log('Element not found for hover');
+        return false;
+      }
+
+      // Get element position
+      const box = await element.boundingBox();
+      if (!box) {
+        console.log('Could not get element bounding box for hover');
+        return false;
+      }
+
+      const targetX = box.x + box.width / 2;
+      const targetY = box.y + box.height / 2;
+
+      // Move with steps but don't click
+      await this.moveTo(targetX, targetY);
+
+      // Remain hovering for the specified duration
+      await delay(hoverDuration);
+
+      return true;
+    } catch (error) {
+      console.error('Hover failed:', error);
+      return false;
+    } finally {
       this.isMoving = false;
     }
   }
