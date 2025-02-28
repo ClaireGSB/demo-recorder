@@ -258,7 +258,6 @@ export class MouseActions {
         console.log('Element not found for hover');
         return false;
       }
-      console.log('Element found for hover:', selector);
 
       // Get element position
       const box = await element.boundingBox();
@@ -267,8 +266,6 @@ export class MouseActions {
         return false;
       }
 
-      console.log('Element bounding box for hover:', box);
-
       const targetX = box.x + box.width / 2;
       const targetY = box.y + box.height / 2;
 
@@ -276,9 +273,7 @@ export class MouseActions {
       await this.moveTo(targetX, targetY);
 
       // Remain hovering for the specified duration
-      console.log(`Hovering over element ${selector} for ${hoverDuration}ms`);
       await delay(hoverDuration);
-      console.log(`Completed hovering over element: ${selector}`);
 
       return true;
     } catch (error) {
