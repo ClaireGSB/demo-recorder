@@ -14,6 +14,7 @@ import type { Frame, RecorderStatus, RecordingOptions, RecordingSegment } from '
 import { TransitionManager } from '../transitions/TransitionManager';
 import type { BaseTransitionOptions } from '../transitions/types';
 import { FrameTrigger } from '../../utils/frame-trigger';
+import { FrameProcessor } from '../transitions/FrameProcessor';
 
 export class ScreenRecorder {
   private ffmpeg: any;
@@ -381,13 +382,6 @@ export class ScreenRecorder {
   private async createFinalFile(transitionManager: TransitionManager): Promise<void> {
     MetricsLogger.logInfo(`Starting segment combination with ${this.segments.length} segments`);
 
-    // Handle single segment case
-    if (this.segments.length === 1) {
-      MetricsLogger.logInfo('Only one segment found, copying to output');
-      await this.copySegmentToOutput(this.segments[0].path, this.options.outputPath);
-      return;
-    }
-
     // Create a temporary directory for intermediate files
     const intermediateDir = path.join(this.tempDir, 'intermediate');
     if (!fs.existsSync(intermediateDir)) {
@@ -395,6 +389,28 @@ export class ScreenRecorder {
     }
 
     try {
+      // Handle single segment case
+      if (this.segments.length === 1) {
+        MetricsLogger.logInfo('Only one segment found, copying to output');
+        await this.copySegmentToOutput(this.segments[0].path, path.join(intermediateDir, 'final_before_frame.mp4'));
+        
+        // Apply frame if configured
+        if (this.options.frame?.enabled) {
+          MetricsLogger.logInfo('Applying frame to video');
+          await FrameProcessor.applyFrame(
+            path.join(intermediateDir, 'final_before_frame.mp4'),
+            this.options.outputPath,
+            this.options.frame,
+            this.page.viewport()?.width || 1920,
+            this.page.viewport()?.height || 1080
+          );
+        } else {
+          // Just move the final file to the output path
+          fs.copyFileSync(path.join(intermediateDir, 'final_before_frame.mp4'), this.options.outputPath);
+        }
+        return;
+      }
+
       let currentOutput = path.join(intermediateDir, 'output_0.mp4');
       let segmentsToConcat: RecordingSegment[] = [this.segments[0]]; // Start with first segment
 
@@ -431,9 +447,24 @@ export class ScreenRecorder {
 
       // Handle any remaining segments that need concatenation
       if (segmentsToConcat.length > 0) {
-        await this.concatenateSegments(segmentsToConcat, this.options.outputPath);
+        const finalBeforeFrame = path.join(intermediateDir, 'final_before_frame.mp4');
+        await this.concatenateSegments(segmentsToConcat, finalBeforeFrame);
+        
+        // Apply frame if configured
+        if (this.options.frame?.enabled) {
+          MetricsLogger.logInfo('Applying frame to video');
+          await FrameProcessor.applyFrame(
+            finalBeforeFrame,
+            this.options.outputPath,
+            this.options.frame,
+            this.page.viewport()?.width || 1920,
+            this.page.viewport()?.height || 1080
+          );
+        } else {
+          // Just move the final file to the output path
+          fs.copyFileSync(finalBeforeFrame, this.options.outputPath);
+        }
       }
-
       MetricsLogger.logInfo('Finished combining segments');
     } finally {
       // Clean up intermediate files

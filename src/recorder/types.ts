@@ -13,6 +13,7 @@ export interface RecordingOptions {
   videoCodec: string;
   videoPreset: string;
   outputPath: string;
+  frame?: FrameConfig;
 }
 
 export interface RecordingSettings {
@@ -148,4 +149,31 @@ export interface RecordingSegment {
   frameCount: number;   // from Segment interface
   width: number;
   height: number;
+}
+
+
+export interface FrameConfig {
+  enabled: boolean;
+  width: number;           // Width of the frame in pixels
+  color: string;           // Primary color (hex format)
+  gradientEnabled?: boolean; // Whether to use gradient
+  gradientColor?: string;  // Secondary color for gradient (hex format)
+  gradientDirection?: 'horizontal' | 'vertical' | 'diagonal'; // Direction of gradient
+  cornerRadius?: number;   // Rounded corners radius
+  shadow?: boolean;        // Whether to add shadow
+  shadowColor?: string;    // Shadow color
+  shadowBlur?: number;     // Shadow blur amount
+  title?: string;          // Optional title to display in the frame
+  titleFont?: string;      // Font for the title
+  titleColor?: string;     // Color for the title
+  titlePosition?: 'top' | 'bottom'; // Position of the title
+}
+
+// Add this to your RecordingConfig interface
+export interface RecordingConfig {
+  output: string;
+  fps: number;
+  quality: number;
+  defaultTypeConfig?: TypeConfig;
+  frame?: FrameConfig;     // Add the frame configuration
 }

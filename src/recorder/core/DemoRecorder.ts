@@ -42,7 +42,8 @@ export class DemoRecorder {
 
     const recordingOptions: RecordingOptions = {
       ...DEFAULT_RECORDING_SETTINGS,
-      outputPath: this.config.recording.output
+      outputPath: this.config.recording.output,
+      frame: this.config.recording.frame
     };
 
     this.recorder = new ScreenRecorder(this.page, recordingOptions);
