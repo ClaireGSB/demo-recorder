@@ -124,6 +124,12 @@ type = "wait"
 duration = 1000
 
 [[steps]]
+type = "hover"
+selector = "[data-test='content-type-select']"
+duration = 2000
+
+
+[[steps]]
 type = "select"
 selector = "[data-test='content-type-select']"
 option = "[data-test='content-type-twitter_post']"
@@ -163,6 +169,11 @@ NOTE: it seems like we need a different format if the selector is a class... To 
 
 ### click
 - **description**: Clicks on an element by selector.
+
+### hover
+- **description**: Moves the mouse over an element without clicking.
+- **selector**: CSS selector of the element to hover over.
+- **duration**: (Optional) How long to hover over the element in milliseconds. Defaults to 1000ms (1 second).
 
 ### wait
 - **description**: Waits for a specified duration in milliseconds.
