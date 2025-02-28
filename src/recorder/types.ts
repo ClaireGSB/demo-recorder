@@ -162,9 +162,8 @@ export interface FrameConfig {
   cornerRadius?: number;   // Rounded corners radius
   shadow?: boolean;        // Whether to add shadow
   shadowColor?: string;    // Shadow color
-  shadowBlur?: number;     // Shadow blur amount
+  shadowBlur?: number;     // Shadow blur amount (pixels)
   title?: string;          // Optional title to display in the frame
-  titleFont?: string;      // Font for the title
   titleColor?: string;     // Color for the title
   titlePosition?: 'top' | 'bottom'; // Position of the title
 }

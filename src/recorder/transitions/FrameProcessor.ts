@@ -1,6 +1,4 @@
 // src/recorder/transitions/FrameProcessor.ts
-// Alternative with more reliable but simpler gradient approach
-
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -35,50 +33,94 @@ export class FrameProcessor {
       return outputPath;
     }
     
-    // Calculate frame dimensions
     const frameWidth = frameConfig.width || 20;
-    const outputWidth = videoDimensions.width + (frameWidth * 2);
-    const outputHeight = videoDimensions.height + (frameWidth * 2);
+    const shadowEnabled = frameConfig.shadow === true;
+    const shadowBlur = shadowEnabled ? (frameConfig.shadowBlur || 10) : 0;
     
-    // Create gradient or solid color background
-    const backgroundPath = path.join(tempDir, `background_${Date.now()}.png`);
+    // Calculate dimensions for the colored frame
+    const totalWidth = videoDimensions.width + (frameWidth * 2);
+    const totalHeight = videoDimensions.height + (frameWidth * 2);
+    
+    // Create the colored frame background
+    const frameBackgroundPath = path.join(tempDir, `frame_bg_${Date.now()}.png`);
+    
+    // Create gradient or solid color background for the frame
     await this.createBackground(
-      backgroundPath, 
-      outputWidth, 
-      outputHeight, 
+      frameBackgroundPath,
+      totalWidth,
+      totalHeight,
       frameConfig.color || '#000000',
       frameConfig.gradientEnabled && frameConfig.gradientColor ? frameConfig.gradientColor : null,
       frameConfig.gradientDirection || 'vertical'
     );
     
-    // Create filter for adding the video on top of the background
-    let complexFilter = '';
+    // Now, let's create the shadow for the video (if enabled)
+    let shadowPath = null;
+    if (shadowEnabled) {
+      shadowPath = path.join(tempDir, `shadow_${Date.now()}.png`);
+      
+      // Create a rectangle with video dimensions and apply shadow to it
+      await this.createVideoShadow(
+        shadowPath,
+        videoDimensions.width,
+        videoDimensions.height,
+        shadowBlur,
+        frameConfig.shadowColor || '#000000'
+      );
+    }
     
-    // Input 0 is the original video, input 1 will be the background image
-    complexFilter += `[1:v][0:v]overlay=x=${frameWidth}:y=${frameWidth}`;
+    // Overlay steps:
+    // 1. The colored frame is the base
+    // 2. If shadow is enabled, overlay the shadow on top of the frame (centered)
+    // 3. Overlay the video centered on top of everything
+    
+    let complexFilter = '';
+    if (shadowEnabled && shadowPath) {
+      // Input 0: Original video
+      // Input 1: Colored frame background
+      // Input 2: Video shadow
+      
+      // First overlay shadow on colored frame background
+      complexFilter += `[1:v][2:v]overlay=x=(W-w)/2:y=(H-h)/2[bg_with_shadow];`;
+      
+      // Then overlay video on top
+      complexFilter += `[bg_with_shadow][0:v]overlay=x=${frameWidth}:y=${frameWidth}`;
+    } else {
+      // Without shadow, just overlay video on the colored frame
+      complexFilter += `[1:v][0:v]overlay=x=${frameWidth}:y=${frameWidth}`;
+    }
     
     // Add title if configured
     if (frameConfig.title) {
       const titlePos = frameConfig.titlePosition || 'top';
-      const titleY = titlePos === 'top' ? frameWidth / 2 : outputHeight - (frameWidth / 2) - 10;
+      const titleY = titlePos === 'top' ? frameWidth / 2 : totalHeight - (frameWidth / 2) - 10;
       const titleColor = frameConfig.titleColor || 'white';
       const fontSize = Math.max(frameWidth * 0.7, 16);
       
       complexFilter += `,drawtext=text='${frameConfig.title}':fontcolor=${titleColor}:fontsize=${fontSize}:x=(w-text_w)/2:y=${titleY}`;
     }
     
+    // Apply all to the video
     return new Promise<string>((resolve, reject) => {
-      // Use two inputs: the video and the background image
-      const ffmpegArgs = [
-        '-i', inputPath,            // Input 0: Original video
-        '-i', backgroundPath,       // Input 1: Background with gradient/color
+      let ffmpegArgs = [
+        '-i', inputPath,              // Input 0: Original video
+        '-i', frameBackgroundPath     // Input 1: Colored frame background
+      ];
+      
+      // Add shadow input if enabled
+      if (shadowEnabled && shadowPath) {
+        ffmpegArgs.push('-i', shadowPath);  // Input 2: Shadow
+      }
+      
+      // Add remaining arguments
+      ffmpegArgs = ffmpegArgs.concat([
         '-filter_complex', complexFilter,
         '-c:v', 'libx264',
         '-preset', 'fast',
         '-crf', '18',
         '-y',
         outputPath
-      ];
+      ]);
       
       MetricsLogger.logInfo(`Applying frame with command: ffmpeg ${ffmpegArgs.join(' ')}`);
       
@@ -89,10 +131,12 @@ export class FrameProcessor {
       });
       
       ffmpeg.on('close', (code: number) => {
-        // Clean up temporary background image
-        if (fs.existsSync(backgroundPath)) {
-          fs.unlinkSync(backgroundPath);
-        }
+        // Clean up temporary files
+        [frameBackgroundPath, shadowPath].forEach(file => {
+          if (file && fs.existsSync(file)) {
+            fs.unlinkSync(file);
+          }
+        });
         
         if (code === 0) {
           MetricsLogger.logInfo(`Successfully applied frame to video: ${outputPath}`);
@@ -105,6 +149,122 @@ export class FrameProcessor {
       ffmpeg.on('error', (err: Error) => {
         MetricsLogger.logError(err, 'FFmpeg frame process error');
         reject(err);
+      });
+    });
+  }
+  
+  /**
+   * Creates a video shadow image - a rectangle with the video dimensions with a shadow applied
+   */
+  private static async createVideoShadow(
+    outputPath: string,
+    width: number,
+    height: number,
+    blur: number,
+    shadowColor: string
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // The size needs to be larger to accommodate the shadow
+      const paddingForShadow = blur * 2;
+      const totalWidth = width + paddingForShadow;
+      const totalHeight = height + paddingForShadow;
+      
+      // Center offset for the rectangle so shadow is even all around
+      const offsetX = Math.floor(paddingForShadow / 2);
+      const offsetY = offsetX;
+      
+      // Try to create shadow with ImageMagick
+      const args = [
+        // Create a transparent canvas of the appropriate size
+        '-size', `${totalWidth}x${totalHeight}`,
+        'xc:none',
+        
+        // Draw a filled rectangle representing the video
+        '-fill', 'black',
+        '-draw', `rectangle ${offsetX},${offsetY} ${offsetX + width},${offsetY + height}`,
+        
+        // Apply shadow effect to it
+        '-shadow', `80x${blur}+0+0`,
+        
+        // Keep only the shadow part, remove the rectangle
+        '-alpha', 'extract',
+        '-background', shadowColor,
+        '-alpha', 'shape',
+        
+        // Output
+        outputPath
+      ];
+      
+      MetricsLogger.logInfo(`Creating video shadow with: convert ${args.join(' ')}`);
+      
+      const convert = spawn('convert', args);
+      
+      convert.on('close', (code: number) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          // If ImageMagick fails, create a simple shadow with FFmpeg
+          this.createVideoShadowWithFFmpeg(outputPath, width, height, blur, shadowColor)
+            .then(resolve)
+            .catch(reject);
+        }
+      });
+      
+      convert.on('error', (err: Error) => {
+        MetricsLogger.logWarning(`ImageMagick not available: ${err.message}. Trying FFmpeg for shadow.`);
+        this.createVideoShadowWithFFmpeg(outputPath, width, height, blur, shadowColor)
+          .then(resolve)
+          .catch(reject);
+      });
+    });
+  }
+  
+  /**
+   * Fallback method to create a video shadow using FFmpeg
+   */
+  private static async createVideoShadowWithFFmpeg(
+    outputPath: string,
+    width: number,
+    height: number,
+    blur: number,
+    shadowColor: string
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // FFmpeg can't create real shadows, so we'll just create a semi-transparent rectangle
+      // that's slightly larger than the video dimensions
+      
+      // Make the shadow slightly larger than the video
+      const shadowPadding = Math.min(blur, 10); // Limit the padding for better control
+      const shadowWidth = width + shadowPadding * 2;
+      const shadowHeight = height + shadowPadding * 2;
+      
+      // Extract the hex color without the # and add alpha
+      let colorWithAlpha = shadowColor;
+      if (colorWithAlpha.startsWith('#')) {
+        colorWithAlpha = colorWithAlpha.substring(1);
+      }
+      // Use a semi-transparent color for the shadow
+      colorWithAlpha = `0x${colorWithAlpha}80`; // 80 is ~50% opacity in hex
+      
+      const ffmpeg = spawn('ffmpeg', [
+        '-f', 'lavfi',
+        '-i', `color=c=${colorWithAlpha}:s=${shadowWidth}x${shadowHeight}`,
+        '-vf', `boxblur=${Math.max(blur/2, 1)}:1`, // Apply some blur for soft edges
+        '-frames:v', '1',
+        '-y',
+        outputPath
+      ]);
+      
+      ffmpeg.on('close', (code: number) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`Failed to create shadow with FFmpeg: exit code ${code}`));
+        }
+      });
+      
+      ffmpeg.on('error', (err: Error) => {
+        reject(new Error(`Failed to create shadow with FFmpeg: ${err.message}`));
       });
     });
   }
@@ -210,7 +370,6 @@ export class FrameProcessor {
    * Gets the actual dimensions of a video file using FFmpeg
    */
   private static async getVideoDimensions(videoPath: string): Promise<{width: number, height: number} | null> {
-    // Same implementation as before
     return new Promise((resolve) => {
       const ffprobe = spawn('ffprobe', [
         '-v', 'error',
