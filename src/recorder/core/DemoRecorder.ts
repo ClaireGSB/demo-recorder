@@ -9,6 +9,8 @@ import { delay } from '../../utils/delay';
 import { DemoConfig, RecordingOptions } from '../types';
 import { MetricsLogger } from '../metrics/MetricsLogger';
 import { DEFAULT_RECORDING_SETTINGS } from '../config/RecorderConfig';
+import { ScreenshotCapture } from '../screenshots/ScreenshotCapture';
+
 
 
 
@@ -19,8 +21,16 @@ export class DemoRecorder {
   private mouseActions?: MouseActions;
   private inputActions?: InputActions;
   private selectActions?: SelectActions;
+  private screenshotCapture?: ScreenshotCapture;
+  private needsRecording: boolean = false;
 
-  constructor(private config: DemoConfig) { }
+
+  constructor(private config: DemoConfig) {
+    // Check if any step requires recording
+    this.needsRecording = config.steps.some(step =>
+      ['startRecording', 'stopRecording', 'pauseRecording', 'resumeRecording'].includes(step.type)
+    );
+  }
 
   async initialize(): Promise<void> {
     this.browser = await puppeteer.launch({
@@ -40,15 +50,23 @@ export class DemoRecorder {
 
     this.mouseActions = MouseActions.getInstance(this.page);
 
-    const recordingOptions: RecordingOptions = {
-      ...DEFAULT_RECORDING_SETTINGS,
-      outputPath: this.config.recording.output
-    };
-
-    this.recorder = new ScreenRecorder(this.page, recordingOptions);
-
     this.inputActions = new InputActions(this.page);
     this.selectActions = new SelectActions(this.page);
+    this.screenshotCapture = new ScreenshotCapture(this.page);
+
+    // Only initialize the recorder if recording steps are present
+    if (this.needsRecording) {
+      if (!this.config.recording) {
+        throw new Error('Recording configuration is required when recording steps are present');
+      }
+
+      const recordingOptions: RecordingOptions = {
+        ...DEFAULT_RECORDING_SETTINGS,
+        outputPath: this.config.recording.output
+      };
+
+      this.recorder = new ScreenRecorder(this.page, recordingOptions);
+    }
   }
 
   async executeStep(step: any): Promise<void> {
@@ -70,8 +88,9 @@ export class DemoRecorder {
 
         case 'input':
           MetricsLogger.logInfo(`Typing into: ${step.selector}`);
+          const defaultTypeConfig = this.config.recording?.defaultTypeConfig || {};
           const typeConfig = {
-            ...this.config.recording.defaultTypeConfig,
+            ...defaultTypeConfig,
             ...step.typeConfig
           };
           await this.inputActions.typeText(step.selector!, step.value!, {
@@ -134,25 +153,38 @@ export class DemoRecorder {
           break;
 
         case 'startRecording':
-          if (!this.recorder) throw new Error('Recorder not initialized');
-          await this.recorder.start(this.config.recording.output);
-          break;
-
         case 'stopRecording':
-          if (!this.recorder) throw new Error('Recorder not initialized');
-          await this.recorder.stop();
-          break;
-
         case 'pauseRecording':
-          if (!this.recorder) throw new Error('Recorder not initialized');
-          MetricsLogger.logInfo(`Pausing recording${step.transition ? ` with ${step.transition.type} transition` : ''}`);
-          // Pass the transition configuration to pause
-          await this.recorder.pause(step.transition);
+        case 'resumeRecording':
+          // Verify recorder is initialized when needed
+          if (!this.recorder) {
+            throw new Error(`Cannot execute ${step.type} step: recorder not initialized. Make sure recording configuration is provided.`);
+          }
+
+          // Execute recording steps as before
+          if (step.type === 'startRecording') {
+            await this.recorder.start(this.config.recording!.output);
+          } else if (step.type === 'stopRecording') {
+            await this.recorder.stop();
+          } else if (step.type === 'pauseRecording') {
+            await this.recorder.pause(step.transition);
+          } else if (step.type === 'resumeRecording') {
+            await this.recorder.resume();
+          }
           break;
 
-        case 'resumeRecording':
-          if (!this.recorder) throw new Error('Recorder not initialized');
-          await this.recorder.resume();
+        case 'takeScreenshot':
+          MetricsLogger.logInfo(`Taking screenshot: ${step.outputName}`);
+          if (!this.screenshotCapture) throw new Error('Screenshot capture not initialized');
+
+          await this.screenshotCapture.capture({
+            outputName: step.outputName,
+            target: step.target || 'fullPage',
+            viewport: this.config.project.viewport,
+            padding: step.padding || 0,
+            omitBackground: step.omitBackground || false,
+            baseOutputDir: step.baseOutputDir || 'screenshots'
+          });
           break;
 
         default:

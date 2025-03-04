@@ -1,6 +1,6 @@
 # Demo Recorder
 
-A tool for automatically recording web application demos using Puppeteer. Creates smooth, professional-looking demo videos with visible mouse movements and natural interactions.
+A tool for automatically recording web application demos and / or taking screenshots using Puppeteer and a simple config file. Creates smooth, professional-looking demo videos with visible mouse movements and natural interactions.
 
 ## Features
 
@@ -10,6 +10,7 @@ A tool for automatically recording web application demos using Puppeteer. Create
 -   **Select Element Support:**  Handles dropdown selections by selector or text.
 -  **Pause and Resume:** Allows recording to be paused and resumed with the option of applying transitions between segments.
 -   **Transitions:** Supports fade and dissolve transitions between recording segments using FFmpeg, customizable by duration and options.
+-   **Screenshots:** Captures specific elements or full page screenshots with custom options including transparent backgrounds and padding.
 
 ## Dependencies
 
@@ -77,6 +78,7 @@ baseUrl = "http://localhost:3000"
 width = 1280
 height = 800
 
+# Cursor click color (optional)
 [project.cursor]
 mouseDownColor = "#3498db"
 
@@ -85,7 +87,7 @@ mouseDownColor = "#3498db"
 email = "${DEMO_USER_EMAIL}"
 password = "${DEMO_USER_PASSWORD}"
 
-# Recording settings
+# Recording settings (optional, but necessary if recording)
 [recording]
 output = "recordings/login-flow.mp4"
 fps = 30
@@ -101,6 +103,14 @@ type = "waitForSelector"
 selector = ".login-form"
 timeout = 15000  # Wait up to 15 seconds (optional)
 visible = true   # Wait for it to be visible, not just in DOM (optional)
+
+[[steps]]
+type = "takeScreenshot"
+outputName = "login-form.png"
+target = ".login-form"
+padding = 20
+omitBackground = true  # For transparent background
+
 
 [[steps]]
 type = "input"
@@ -183,6 +193,13 @@ NOTE: it seems like we need a different format if the selector is a class... To 
 - **selector**: CSS selector of the element to wait for.
 - **timeout**: (Optional) Maximum time to wait in milliseconds. Defaults to 30000 (30 seconds).
 - **visible**: (Optional) Whether to wait for the element to be visible, not just present in DOM. Defaults to true.
+
+### takeScreenshot
+- **description**: Captures a screenshot of a specific element or the full page.
+- **outputName**: Filename for the screenshot (will be saved in the screenshots directory).
+- **target**: (Optional) CSS selector of the element to capture, or 'fullPage' or 'viewport'. Defaults to 'fullPage'.
+- **padding**: (Optional) Number of pixels to add as padding around the element. Defaults to 0.
+- **omitBackground**: (Optional) Makes the background transparent (PNG format). Defaults to false.
 
 ### scrollDown
 - **description**: Scrolls down a specific number of pixels over a duration.

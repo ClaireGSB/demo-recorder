@@ -41,10 +41,20 @@ async function record() {
     // Load and validate config
     const config = initializeConfig(targetDir);
 
-    // Create output directory if specified in config
-    const outputDir = path.dirname(path.join(targetDir, config.recording.output));
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
+    // Create output directory if recording is configured
+    if (config.recording && config.recording.output) {
+      const outputDir = path.dirname(path.join(targetDir, config.recording.output));
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+    } else {
+      // For screenshot-only configs
+      // Create a default screenshots directory
+      const screenshotsDir = path.join(targetDir, 'screenshots');
+      if (!fs.existsSync(screenshotsDir)) {
+        fs.mkdirSync(screenshotsDir, { recursive: true });
+      }
+      MetricsLogger.logInfo(`Created screenshots directory: ${screenshotsDir}`);
     }
 
     // Initialize and run recorder

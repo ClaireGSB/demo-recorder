@@ -27,6 +27,19 @@ path = "/login"
 type = "wait"
 duration = 2000
 
+# Full page screenshot
+[[steps]]
+type = "takeScreenshot"
+outputName = "01-full-page.png"
+target = "fullPage"
+
+# Element screenshot
+[[steps]]
+type = "takeScreenshot"
+outputName = "02-immediate-card.png"
+target = "#login-form"
+padding = 10
+
 [[steps]]
 type = "input"
 selector = "[type='email']"
