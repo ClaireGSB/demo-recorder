@@ -51,7 +51,8 @@ export type StepType =
   | 'startRecording'
   | 'stopRecording'
   | 'pauseRecording'
-  | 'resumeRecording';
+  | 'resumeRecording'
+  | 'takeScreenshot';
 
 export interface ScrollStep extends Step {
   type: 'scrollDown';
@@ -71,6 +72,14 @@ export interface HoverStep extends Step {
   type: 'hover';
   selector: string;
   duration?: number;
+}
+
+export interface ScreenshotStep extends Step {
+  type: 'takeScreenshot';
+  outputName: string;
+  target?: string | 'fullPage' | 'viewport';
+  padding?: number;
+  omitBackground?: boolean;
 }
 
 export interface ProjectConfig {
@@ -97,9 +106,9 @@ export interface RecordingConfig {
 export interface DemoConfig {
   project: ProjectConfig;
   auth?: AuthConfig;
-  recording: RecordingConfig;
+  recording?: RecordingConfig;
   steps: Step[];
-  hasTransitions: boolean;
+  hasTransitions?: boolean;
 }
 
 export interface Frame {

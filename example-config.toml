@@ -38,6 +38,13 @@ timeout = 15000  # Wait up to 15 seconds (optional)
 visible = true   # Wait for it to be visible, not just in DOM (optional)
 
 [[steps]]
+type = "takeScreenshot"
+outputName = "login-page.png"
+target = ".login-form"
+padding = 20
+omitBackground = true  # For transparent background
+
+[[steps]]
 type = "startRecording"  # Explicitly start recording before login sequence
 
 [[steps]]
