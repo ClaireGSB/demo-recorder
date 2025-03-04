@@ -78,6 +78,7 @@ baseUrl = "http://localhost:3000"
 width = 1280
 height = 800
 
+# Cursor click color (optional)
 [project.cursor]
 mouseDownColor = "#3498db"
 
@@ -86,7 +87,7 @@ mouseDownColor = "#3498db"
 email = "${DEMO_USER_EMAIL}"
 password = "${DEMO_USER_PASSWORD}"
 
-# Recording settings
+# Recording settings (optional, but necessary if recording)
 [recording]
 output = "recordings/login-flow.mp4"
 fps = 30
