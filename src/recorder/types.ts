@@ -52,7 +52,10 @@ export type StepType =
   | 'stopRecording'
   | 'pauseRecording'
   | 'resumeRecording'
-  | 'takeScreenshot';
+  | 'takeScreenshot'
+  | 'zoom'
+  | 'zoomToPoint'
+  | 'zoomSequence';
 
 export interface ScrollStep extends Step {
   type: 'scrollDown';
@@ -80,6 +83,39 @@ export interface ScreenshotStep extends Step {
   target?: string | 'fullPage' | 'viewport';
   padding?: number;
   omitBackground?: boolean;
+}
+
+export interface ZoomStep extends Step {
+  type: 'zoom';
+  target: string;
+  scale: number;
+  duration?: number;
+  easing?: string;
+  waitForCompletion?: boolean;
+  origin?: 'center' | 'mouse' | { x: number; y: number };
+  padding?: number;
+}
+
+export interface ZoomToPointStep extends Step {
+  type: 'zoomToPoint';
+  x: number;
+  y: number;
+  scale: number;
+  duration?: number;
+  easing?: string;
+  waitForCompletion?: boolean;
+  padding?: number;
+}
+
+export interface ZoomSequenceStep extends Step {
+  type: 'zoomSequence';
+  steps: Array<{
+    target: string;
+    scale: number;
+    duration: number;
+  }>;
+  overlap?: number;
+  waitForCompletion?: boolean;
 }
 
 export interface ProjectConfig {

@@ -4,6 +4,7 @@ import * as puppeteer from 'puppeteer';
 import { MouseActions } from '../../actions/MouseActions';
 import { InputActions } from '../../actions/InputActions';
 import { SelectActions } from '../../actions/SelectActions';
+import { ZoomActions } from '../../actions/ZoomActions';
 import { ScreenRecorder } from './ScreenRecorder';
 import { delay } from '../../utils/delay';
 import { DemoConfig, RecordingOptions } from '../types';
@@ -151,6 +152,41 @@ export class DemoRecorder {
             step.duration || 1000
           );
           break;
+
+          case 'zoom':
+            MetricsLogger.logInfo(`Zooming to: ${step.target}`);
+            const zoomActions = new ZoomActions(this.page);
+            await zoomActions.zoomToElement(step.target, {
+              scale: step.scale,
+              duration: step.duration || 1000,
+              easing: step.easing || 'ease-in-out',
+              waitForCompletion: step.waitForCompletion !== false,
+              origin: step.origin || 'center',
+              padding: step.padding || 0
+            });
+            break;
+            
+          case 'zoomToPoint':
+            MetricsLogger.logInfo(`Zooming to point: (${step.x}, ${step.y})`);
+            const pointZoomActions = new ZoomActions(this.page);
+            await pointZoomActions.zoomToPoint(step.x, step.y, {
+              scale: step.scale,
+              duration: step.duration || 1000,
+              easing: step.easing || 'ease-in-out',
+              waitForCompletion: step.waitForCompletion !== false,
+              padding: step.padding || 100
+            });
+            break;
+            
+          case 'zoomSequence':
+            MetricsLogger.logInfo(`Starting zoom sequence with ${step.steps.length} steps`);
+            const sequenceZoomActions = new ZoomActions(this.page);
+            await sequenceZoomActions.zoomSequence(
+              step.steps,
+              step.overlap || 0,
+              step.waitForCompletion !== false
+            );
+            break;
 
         case 'startRecording':
         case 'stopRecording':
