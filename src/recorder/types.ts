@@ -94,6 +94,11 @@ export interface ZoomStep extends Step {
   waitForCompletion?: boolean;
   origin?: 'center' | 'mouse' | { x: number; y: number };
   padding?: number;
+  fitWidth?: number;
+  fitHeight?: number;
+  fitMode?: 'contain' | 'cover';
+  focusPoint?: 'center' | 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
 }
 
 export interface ZoomToPointStep extends Step {

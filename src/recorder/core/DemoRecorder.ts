@@ -162,7 +162,11 @@ export class DemoRecorder {
               easing: step.easing || 'ease-in-out',
               waitForCompletion: step.waitForCompletion !== false,
               origin: step.origin || 'center',
-              padding: step.padding || 0
+              padding: step.padding || 0,
+              // fitWidth: step.fitWidth,
+              // fitHeight: step.fitHeight,
+              // fitMode: step.fitMode,
+              // focusPoint: step.focusPoint
             });
             break;
             
