@@ -163,10 +163,10 @@ export class DemoRecorder {
               waitForCompletion: step.waitForCompletion !== false,
               origin: step.origin || 'center',
               padding: step.padding || 0,
-              // fitWidth: step.fitWidth,
-              // fitHeight: step.fitHeight,
-              // fitMode: step.fitMode,
-              // focusPoint: step.focusPoint
+              fitWidth: step.fitWidth,
+              fitHeight: step.fitHeight,
+              fitMode: step.fitMode,
+              focusPoint: step.focusPoint
             });
             break;
             
